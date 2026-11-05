@@ -12,7 +12,7 @@ internal static unsafe class GeometryProcessor
     private const int ChunkVertices = 65_532; // Multiple of 3, safely inside ushort addressing.
 
     public static bool Build(ImDrawList* source, OwnedDrawList output, SpringSurface surface,
-        Vector4 viewport, float framebufferScale, ref int vertexBudget, ref int triangleBudget)
+        Vector4 viewport, float framebufferScale, ref int vertexBudget, ref int workBudget)
     {
         output.Reset();
         int cells = Math.Clamp((int)MathF.Ceiling(MathF.Sqrt(12 * surface.MaximumOffset * framebufferScale / 0.5f)), 8, 64);
@@ -35,7 +35,7 @@ internal static unsafe class GeometryProcessor
             Vector4 bounds = EmptyBounds;
             for (uint index = original.IdxOffset; index < original.IdxOffset + original.ElemCount; index += 3)
             {
-                if (--triangleBudget < 0) return false;
+                if (--workBudget < 0) return false;
                 for (int i = 0; i < 3; ++i)
                 {
                     ulong vertex = (ulong)source->IdxBuffer.DataRaw[index + i] + original.VtxOffset;
@@ -43,6 +43,8 @@ internal static unsafe class GeometryProcessor
                     polygon[i] = ClipVertex.From(source->VtxBuffer.DataRaw[vertex]);
                     if (!SpringSurface.Finite(polygon[i].Position) || !SpringSurface.Finite(polygon[i].UV)) return false;
                 }
+                if (Math.Abs(SpringSurface.Cross(polygon[1].Position - polygon[0].Position,
+                    polygon[2].Position - polygon[0].Position)) < 0.00001f) continue;
                 int count = Clip(polygon, 3, scratch, clip);
                 if (count < 3) continue;
                 Vector2 min = polygon[0].Position, max = min;
@@ -52,6 +54,7 @@ internal static unsafe class GeometryProcessor
                 for (int y = y0; y <= y1; ++y)
                 for (int x = x0; x <= x1; ++x)
                 {
+                    if (--workBudget < 0) return false;
                     polygon[..count].CopyTo(clipped);
                     var tile = new Vector4(x == 0 ? min.X : surface.Position.X + x * cell.X,
                         y == 0 ? min.Y : surface.Position.Y + y * cell.Y,
@@ -61,7 +64,12 @@ internal static unsafe class GeometryProcessor
                     for (int t = 1; t + 1 < n; ++t)
                     {
                         ClipVertex a = clipped[0], b = clipped[t], c = clipped[t + 1];
-                        if (Math.Abs(SpringSurface.Cross(b.Position - a.Position, c.Position - a.Position)) < 0.00001f) continue;
+                        float sourceArea = SpringSurface.Cross(b.Position - a.Position, c.Position - a.Position);
+                        if (Math.Abs(sourceArea) < 0.00001f) continue;
+                        Vector2 pa = surface.Warp(a.Position), pb = surface.Warp(b.Position), pc = surface.Warp(c.Position);
+                        float outputArea = SpringSurface.Cross(pb - pa, pc - pa);
+                        // The coarse solver guard is only a heuristic. Validate actual output too.
+                        if (!float.IsFinite(outputArea) || outputArea * Math.Sign(sourceArea) < Math.Abs(sourceArea) * 0.05f) return false;
                         if (vertexBudget < 3) return false;
                         if (output.Vertices.Count - command.VtxOffset + 3 > ChunkVertices)
                         {
@@ -69,9 +77,9 @@ internal static unsafe class GeometryProcessor
                             command.IdxOffset = (uint)output.Indices.Count; command.VtxOffset = (uint)output.Vertices.Count;
                             bounds = EmptyBounds;
                         }
-                        Emit(a, output, surface, command.VtxOffset, ref bounds);
-                        Emit(b, output, surface, command.VtxOffset, ref bounds);
-                        Emit(c, output, surface, command.VtxOffset, ref bounds);
+                        Emit(a, pa, output, command.VtxOffset, ref bounds);
+                        Emit(b, pb, output, command.VtxOffset, ref bounds);
+                        Emit(c, pc, output, command.VtxOffset, ref bounds);
                         command.ElemCount += 3; vertexBudget -= 3;
                     }
                 }
@@ -83,9 +91,8 @@ internal static unsafe class GeometryProcessor
         return true;
     }
 
-    private static void Emit(ClipVertex vertex, OwnedDrawList output, SpringSurface surface, uint vertexOffset, ref Vector4 bounds)
+    private static void Emit(ClipVertex vertex, Vector2 position, OwnedDrawList output, uint vertexOffset, ref Vector4 bounds)
     {
-        Vector2 position = surface.Warp(vertex.Position);
         if (!SpringSurface.Finite(position)) throw new InvalidOperationException("Non-finite deformed vertex.");
         bounds = new Vector4(Math.Min(bounds.X, position.X), Math.Min(bounds.Y, position.Y),
             Math.Max(bounds.Z, position.X), Math.Max(bounds.W, position.Y));

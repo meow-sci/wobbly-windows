@@ -52,11 +52,15 @@ public sealed class Mod
         try { _runtime?.DrawMenu(); }
         catch (Exception error) { _runtime?.Fail(error); }
     }
-    private static void BeforeBackendShutdown() { _runtime?.Dispose(); }
+    private static void BeforeBackendShutdown()
+    {
+        try { _runtime?.SaveSettings(); _runtime?.Dispose(); }
+        catch (Exception error) { WobbleRuntime.Log("Shutdown cleanup failed: " + error); }
+    }
     private static bool GuardTextInput(ref bool __result)
     {
         // Preserve the normal console path and only consume keys while a UI text editor is active.
-        if (_runtime != null && !(Program.ConsoleWindow?.IsOpen ?? false) && ImGui.GetIO().WantTextInput)
+        if (_runtime?.CanReadInput == true && !(Program.ConsoleWindow?.IsOpen ?? false) && ImGui.GetIO().WantTextInput)
         { __result = true; return false; }
         return true;
     }

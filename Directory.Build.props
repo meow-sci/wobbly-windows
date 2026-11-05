@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
+    <!-- Both NuGet references are compile-only host contracts; keep offline builds reproducible. -->
+    <NuGetAudit>false</NuGetAudit>
     <KSAFolder Condition="'$(KSAFolder)' == ''">$(KSA_DLL_DIR)</KSAFolder>
     <KSAFolder Condition="'$(KSAFolder)' == '' and Exists('$(MSBuildThisFileDirectory)../ksa-game-assemblies/current/dll/KSA.dll')">$(MSBuildThisFileDirectory)../ksa-game-assemblies/current/dll</KSAFolder>
     <BaseIntermediateOutputPath Condition="'$(RunChecks)' == 'true'">obj/checks/</BaseIntermediateOutputPath>

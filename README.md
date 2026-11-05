@@ -8,6 +8,8 @@ This initial release targets the inspected Windows x64 KSA **2026.10.25.5707** b
 
 Docked windows, popups, menus, tooltips, custom draw callbacks (including gauges), secondary/offscreen contexts, detached platform windows, and windows touching the viewport boundary are excluded. Child windows share their root's deformation. Ordinary purrtty windows can participate; its in-world panels remain unchanged.
 
+Compatibility with other mods that replace or resize finalized ImGui draw data needs separate testing. The output views are mod-owned and read-only to render consumers; another modifier must not free or reallocate them through ImGui's allocator.
+
 ## Use
 
 Install the `wobbly-windows` folder from the release ZIP in your StarMap mod location and enable its ID. Open the **Wobbly Windows** game menu for settings or a live sample window. The effect is enabled by default. Choose Subtle, Classic, or Playful; adjust strength, responsiveness, and settling; exclude individual windows or disable the effect for reduced motion. Preferences are saved to `settings.json` alongside the installed mod.

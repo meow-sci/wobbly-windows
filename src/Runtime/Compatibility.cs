@@ -15,6 +15,8 @@ internal static class Compatibility
         // Check loaded metadata and the actual loaded native module before reading any internal pointer.
         Require(typeof(KSA.Program).Module.ModuleVersionId == new Guid("a6318490-1e4f-4d4c-9f1a-b48f97f44be4"), "KSA build");
         Require(typeof(ImGui).Module.ModuleVersionId == new Guid("ed379898-6c19-48b8-a05b-be57942bf38e"), "BRUTAL ImGui build");
+        Require(typeof(Brutal.Numerics.float2).Module.ModuleVersionId == new Guid("4d69b4eb-c834-4206-8169-3207d83f3583"), "BRUTAL numerics build");
+        Require(typeof(Brutal.Pointers.Ptr<byte>).Module.ModuleVersionId == new Guid("4719236f-7bcd-479e-8038-953892edb33d"), "BRUTAL memory build");
         Require(IntPtr.Size == 8 && sizeof(ImGuiContext) == 11320 && sizeof(ImGuiWindow) == 1224
             && sizeof(ImDrawList) == 224 && sizeof(ImDrawData) == 72 && sizeof(ImDrawCmd) == 72
             && sizeof(ImDrawVert) == 20 && sizeof(ImVector<ushort>) == 16 && sizeof(ImGuiContextHook) == 32, "native layouts");

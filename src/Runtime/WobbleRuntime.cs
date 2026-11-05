@@ -26,6 +26,7 @@ internal unsafe sealed partial class WobbleRuntime : IDisposable
     private double _processingMs;
     private string _frameStatus = "Waiting for the main UI frame.";
     private WobbleSettings _settings;
+    internal bool CanReadInput => !_disposed && _context != null && _fault == null;
 
     internal sealed class WindowState
     {
@@ -141,7 +142,9 @@ internal unsafe sealed partial class WobbleRuntime : IDisposable
                     { previous.Blocked = state.Blocked = true; }
                     else _owners[key] = state;
                 }
-                if (window.Hidden || window.ViewportId.Value != viewportId.Value) state.Blocked = true;
+                // Hidden/clipped children need not invalidate a visible root: they contribute no
+                // final draw list. A different viewport cannot share this deformation safely.
+                if (window.ViewportId.Value != viewportId.Value) state.Blocked = true;
                 // A popup can have its own root while still depending on an ordinary window.
                 if ((window.Flags & (ImGuiWindowFlags.Popup | ImGuiWindowFlags.Modal | ImGuiWindowFlags.ChildMenu)) != 0)
                 {

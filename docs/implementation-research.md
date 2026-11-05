@@ -4,7 +4,7 @@ Research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10
 
 **A high-quality wobbly windows mod looks technically feasible. The strongest starting architecture is a CPU spring simulation plus deformation of live ImGui draw geometry, using the game's existing renderer.** A custom shader is optional. The difficult parts are clipping, draw-data ownership, and UI occlusion. Mouse hitboxes will remain unchanged: waiting for the release wobble to settle before targeting controls is an accepted interaction tradeoff.
 
-The proposed first experiment should prove the integration on one ordinary window. The intended finished experience is a window that follows the exact grab point, bends smoothly during movement, settles naturally, keeps its contents live, and returns to normal mouse targeting when settled. This is a source-backed design, not an in-game feasibility demonstration: no mod has been implemented or run for this research.
+The intended experience is a window that follows the exact grab point, bends smoothly during movement, settles naturally, keeps its contents live, and returns to normal mouse targeting when settled. This document records the source research. The subsequent implementation uses the single-project purr2d2 structure requested for this mod; see [the README](/Users/asherwin/wip/wobbly-windows/repos/wobbly-windows-remote/README.md) for current build and validation instructions. An in-game feasibility demonstration remains outstanding.
 
 ## Evidence and compatibility baseline
 
@@ -184,7 +184,7 @@ purrtty demonstrates a mod-owned Vulkan offscreen ImGui renderer, but its separa
 
 ## Project and loader design
 
-Use one installable mod with a thin `wobbly-windows` entry/UI assembly and reusable `wobbly-windows.lib` functionality. Keep the numeric solver and geometry operations independent of KSA where practical; isolate unsafe host bindings and context management behind a small adapter. Tests should exercise the reusable code without launching the game. Do not make a standalone mod depend on the entire unscience mod.
+Use one installable mod and a single `WobblyWindows.csproj`, following purr2d2. Separate entry, UI, numeric simulation, geometry, and unsafe integration by source folders within that assembly. Tests use an isolated executable configuration of the same project. No separate `.lib` project is needed. Keep the numeric solver independent of KSA and avoid depending on the entire unscience mod.
 
 StarMap discovers `[StarMapMod]` and lifecycle-attributed methods. The mod itself invokes its own patch helpers. Initialize managed state at the appropriate load stage, bind native state only when the known main context exists, and tear down hooks, menu registrations, buffers, and owned patches through `[StarMapUnload]`. [Loader discovery][loader], [unscience entry][unscience].
 
@@ -198,7 +198,7 @@ The build should target .NET 10 and an XML `.slnx`. A plain Release build must a
 - `StarMapAfterGui` is a postfix on `OnDrawUiViewports`; more UI is submitted afterward. It is not a final-geometry hook. GUI hooks also disappear while the HUD is hidden.
 - Current StarMap source resolves `OnFrame` without non-public binding flags while the current game declares it protected. Treat `StarMapAfterOnFrame` as needing installed-version verification; the proposed context-hook design does not depend on it.
 - Parameterless immediate-load methods in older examples do not match the inspected loader's required `KSA.Mod` parameter.
-- The mod implementation skill's `ksa-mod-experiments.slnx` and template-folder paths describe another repository. Preserve its reusable-core intent without inventing that monorepo here.
+- The mod implementation skill's `ksa-mod-experiments.slnx` and template-folder paths describe another repository. The explicit single-project requirement takes precedence over its separate-library guidance.
 - The release KB index requires automatic Release staging; an older opt-in staging example in its dependency reference conflicts with that contract. Follow the explicit index requirement.
 
 ## Implementation milestones and acceptance gates

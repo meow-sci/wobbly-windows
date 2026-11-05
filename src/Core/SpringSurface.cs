@@ -6,8 +6,8 @@ namespace WobblyWindows.Core;
 internal sealed class SpringSurface
 {
     private const float Step = 1f / 120;
-    private readonly Vector2[] _offset = new Vector2[16], _velocity = new Vector2[16], _force = new Vector2[16];
-    private Vector2 _position, _size, _grab;
+    private readonly Vector2[] _offset = new Vector2[16], _displayOffset = new Vector2[16], _velocity = new Vector2[16], _force = new Vector2[16];
+    private Vector2 _position, _size, _grab, _pendingMovement;
     private float _accumulator;
     private bool _initialized, _dragging;
     public bool IsActive { get; private set; }
@@ -17,8 +17,9 @@ internal sealed class SpringSurface
 
     public void Reset(Vector2 position, Vector2 size)
     {
-        Array.Clear(_offset); Array.Clear(_velocity);
+        Array.Clear(_offset); Array.Clear(_displayOffset); Array.Clear(_velocity);
         _position = position; _size = size; _accumulator = 0;
+        _pendingMovement = Vector2.Zero;
         _initialized = true; _dragging = false; IsActive = false; MaximumOffset = 0;
     }
 
@@ -35,7 +36,7 @@ internal sealed class SpringSurface
         _position = position; _size = size;
         if (dragging)
         {
-            for (int i = 0; i < 16; ++i) _offset[i] -= movement * settings.Strength;
+            _pendingMovement += movement * settings.Strength;
             IsActive |= movement.LengthSquared() > 0.001f;
         }
         _dragging = dragging;
@@ -45,6 +46,11 @@ internal sealed class SpringSurface
         _accumulator = Math.Min(_accumulator + elapsed, 8 * Step);
         while (_accumulator >= Step)
         {
+            // Resample the frame's moving rest position across fixed steps. Applying all movement
+            // before the first step would over-damp low-FPS dragging and change the feel with FPS.
+            Vector2 stepMovement = _pendingMovement * (Step / _accumulator);
+            _pendingMovement -= stepMovement;
+            for (int i = 0; i < 16; ++i) _offset[i] -= stepMovement;
             for (int y = 0; y < 4; ++y)
             for (int x = 0; x < 4; ++x)
             {
@@ -58,40 +64,45 @@ internal sealed class SpringSurface
             }
             for (int i = 0; i < 16; ++i)
             { _velocity[i] += _force[i] * Step; _offset[i] += _velocity[i] * Step; }
-            if (dragging) PinGrab();
+            if (dragging) PinGrab(_offset, stepMovement / Step);
             _accumulator -= Step;
         }
-        // Input can move on a frame with no physics step. Anchor the displayed surface too.
-        if (dragging) PinGrab();
+        // Extrapolate only the substep remainder to the current logical rectangle. The displayed
+        // constraint is separate so a high-refresh frame cannot perturb the fixed-step solver.
+        for (int i = 0; i < 16; ++i) _displayOffset[i] = _offset[i] + _velocity[i] * _accumulator - _pendingMovement;
+        if (dragging) PinGrab(_displayOffset, null);
         MaximumOffset = 0;
         float maximumVelocity = 0;
         for (int i = 0; i < 16; ++i)
         {
-            if (!Finite(_offset[i]) || !Finite(_velocity[i])) { Reset(position, size); return; }
-            MaximumOffset = Math.Max(MaximumOffset, _offset[i].Length());
+            if (!Finite(_displayOffset[i]) || !Finite(_velocity[i])) { Reset(position, size); return; }
+            MaximumOffset = Math.Max(MaximumOffset, _displayOffset[i].Length());
             maximumVelocity = Math.Max(maximumVelocity, _velocity[i].Length());
         }
         float limit = Math.Min(64, Math.Min(size.X, size.Y) * 0.08f) * Math.Min(1.5f, settings.Strength);
         if (MaximumOffset > limit)
         {
             float scale = limit / MaximumOffset;
-            for (int i = 0; i < 16; ++i) { _offset[i] *= scale; _velocity[i] *= scale; }
+            for (int i = 0; i < 16; ++i) { _offset[i] *= scale; _displayOffset[i] *= scale; _velocity[i] *= scale; }
             MaximumOffset = limit;
         }
         if (MaximumOffset < 0.08f && maximumVelocity < 0.4f) { Reset(position, size); return; }
         if (!HasPositiveJacobian()) Reset(position, size);
     }
 
-    private void PinGrab()
+    private void PinGrab(Vector2[] offsets, Vector2? targetVelocity)
     {
         Span<float> weights = stackalloc float[16];
         Weights(_grab, weights);
         Vector2 error = Vector2.Zero, speed = Vector2.Zero;
         float sum = 0;
         for (int i = 0; i < 16; ++i)
-        { error += weights[i] * _offset[i]; speed += weights[i] * _velocity[i]; sum += weights[i] * weights[i]; }
+        { error += weights[i] * offsets[i]; speed += weights[i] * _velocity[i]; sum += weights[i] * weights[i]; }
         for (int i = 0; i < 16; ++i)
-        { _offset[i] -= error * (weights[i] / sum); _velocity[i] -= speed * (weights[i] / sum); }
+        {
+            offsets[i] -= error * (weights[i] / sum);
+            if (targetVelocity.HasValue) _velocity[i] += (targetVelocity.Value - speed) * (weights[i] / sum);
+        }
     }
 
     public Vector2 Warp(Vector2 position)
@@ -100,7 +111,7 @@ internal sealed class SpringSurface
         Span<float> weights = stackalloc float[16];
         Weights(Vector2.Clamp((position - _position) / _size, Vector2.Zero, Vector2.One), weights);
         Vector2 displacement = Vector2.Zero;
-        for (int i = 0; i < 16; ++i) displacement += weights[i] * _offset[i];
+        for (int i = 0; i < 16; ++i) displacement += weights[i] * _displayOffset[i];
         return position + displacement;
     }
 

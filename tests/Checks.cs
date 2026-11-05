@@ -22,6 +22,7 @@ internal static unsafe class Checks
             Run("identity raster coverage matches original clipping", RasterIdentity);
             Run("16-bit command segmentation and offsets", Segmentation);
             Run("callbacks, malformed input and budget fallback", Rejection);
+            Run("tile work cap and locally folded geometry fallback", WorkAndFolds);
             Run("warm solver and mesh path allocate no managed memory", Allocation);
             Console.WriteLine($"PASS: {_passed} check groups. Native ImGui and KSA were not launched.");
             return 0;
@@ -101,6 +102,26 @@ internal static unsafe class Checks
             float error = Vector2.Distance(reference, sample);
             Console.WriteLine($"  {hz} Hz release comparison: {error:F3} px");
             Require(error < 3, "Frame-rate response diverged");
+        }
+        Vector2 dragReference = ConstantDrag(120);
+        foreach (int hz in new[] { 30, 60, 144, 240 })
+        {
+            float error = Vector2.Distance(dragReference, ConstantDrag(hz));
+            Console.WriteLine($"  {hz} Hz continuous-drag comparison: {error:F3} px");
+            Require(error < 0.5f, "Continuous dragging depends on frame rate");
+        }
+        static Vector2 ConstantDrag(int hz)
+        {
+            var surface = new SpringSurface();
+            var size = new Vector2(800, 600);
+            var settings = new WobbleSettings();
+            surface.Reset(Vector2.Zero, size);
+            for (int i = 1; i <= hz / 2; ++i)
+            {
+                var pos = new Vector2(600f * i / hz, 0);
+                surface.Advance(pos, size, pos + new Vector2(184, 21), true, 1f / hz, settings);
+            }
+            return surface.Warp(surface.Position + size) - (surface.Position + size);
         }
         static Vector2 Replay(int hz)
         {
@@ -252,6 +273,28 @@ internal static unsafe class Checks
         source.Commands.Pointer[0].VtxOffset = 1;
         source.Vertices.Pointer[1].pos.X = float.NaN;
         Require(!Build(source, output, surface), "Non-finite vertex accepted");
+    }
+
+    private static void WorkAndFolds()
+    {
+        using var source = TriangleSource(); using var output = new OwnedDrawList();
+        var surface = new SpringSurface(); surface.Reset(Vector2.Zero, new(40, 30));
+        int vertices = 1000, work = 1;
+        Require(!GeometryProcessor.Build(source.Pointer, output, surface, new(-100, -100, 500, 500), 1,
+            ref vertices, ref work), "Tile clipping ignored work budget");
+
+        surface.Reset(Vector2.Zero, new(400, 400));
+        // Adversarial bounded field: a coarse 8x8 guard misses the top-right local inversion.
+        var offsets = (Vector2[])typeof(SpringSurface).GetField("_displayOffset", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(surface)!;
+        float q = 48 / MathF.Sqrt(2);
+        Array.Fill(offsets, new Vector2(-q, q)); offsets[2] = offsets[7] = new Vector2(q, -q);
+        typeof(SpringSurface).GetProperty(nameof(SpringSurface.IsActive))!.SetValue(surface, true);
+        typeof(SpringSurface).GetProperty(nameof(SpringSurface.MaximumOffset))!.SetValue(surface, 48f);
+        using var corner = new OwnedDrawList();
+        corner.Vertices.Add(Vertex(399.9f, 0.1f)); corner.Vertices.Add(Vertex(399.99f, 0.1f)); corner.Vertices.Add(Vertex(399.9f, 0.19f));
+        corner.Indices.Add(0); corner.Indices.Add(1); corner.Indices.Add(2);
+        corner.Commands.Add(new ImDrawCmd { ClipRect = new float4(0, 0, 400, 400), ElemCount = 3 }); corner.Complete(default);
+        Require(!Build(corner, output, surface), "Locally flipped output was accepted");
     }
 
     private static void Allocation()
