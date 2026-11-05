@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <OutputType Condition="'$(RunChecks)' == 'true'">Exe</OutputType>
+    <AssemblyName>WobblyWindows</AssemblyName>
+    <RootNamespace>WobblyWindows</RootNamespace>
+    <Version>0.1.0</Version>
+    <Description>Live wobbly ImGui windows for Kitten Space Agency.</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ModStageDir>$(MSBuildProjectDirectory)/artifacts/stage/wobbly-windows</ModStageDir>
+    <ModArchive>$(MSBuildProjectDirectory)/artifacts/dist/wobbly-windows-$(Version).zip</ModArchive>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+    <Compile Include="tests/**/*.cs" Condition="'$(RunChecks)' == 'true'" />
+    <PackageReference Include="StarMap.API" Version="0.3.6" PrivateAssets="all" IncludeAssets="compile;build;analyzers" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" PrivateAssets="all" IncludeAssets="compile;build;analyzers" />
+    <HostAssembly Include="KSA;Brutal.Core;Brutal.Numerics;Brutal.Memory;Brutal.Strings;Brutal.ImGui;Brutal.ImGui.Abstractions;Brutal.Glfw;Brutal.Vulkan;Brutal.Vulkan.Abstractions;Brutal.Render.Common;Planet.Core;Planet.Render.Core" />
+    <Reference Include="@(HostAssembly)">
+      <HintPath>$(KSAFolder)/%(Identity).dll</HintPath>
+      <Private>false</Private>
+      <Private Condition="'$(RunChecks)' == 'true'">true</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="ValidateHostReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(KSAFolder)/%(HostAssembly.Identity).dll')" Text="Missing %(HostAssembly.Identity).dll. Set KSAFolder or KSA_DLL_DIR to the complete KSA 2026.10.25.5707 DLL snapshot." />
+  </Target>
+  <Target Name="BuildModDistribution" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' and '$(DesignTimeBuild)' != 'true' and '$(RunChecks)' != 'true'">
+    <ItemGroup>
+      <_StageFile Include="$(TargetPath);$(TargetDir)$(AssemblyName).deps.json;$(MSBuildProjectDirectory)/mod.toml;$(MSBuildProjectDirectory)/LICENSE;$(MSBuildProjectDirectory)/README.md" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(_StageFile.Identity)')" Text="Required distribution input missing: %(_StageFile.Identity)" />
+    <PropertyGroup>
+      <_ManifestVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/mod.toml')), '(?m)^version\s*=\s*&quot;([^&quot;]+)&quot;\s*$').Groups[1].Value)</_ManifestVersion>
+      <_ArchiveRoot>$(IntermediateOutputPath)mod-package</_ArchiveRoot>
+    </PropertyGroup>
+    <Error Condition="'$(_ManifestVersion)' != '$(Version)'" Text="mod.toml version must match project Version $(Version)." />
+    <RemoveDir Directories="$(ModStageDir);$(_ArchiveRoot)" />
+    <MakeDir Directories="$(ModStageDir);$(_ArchiveRoot)/wobbly-windows;$(MSBuildProjectDirectory)/artifacts/dist" />
+    <Copy SourceFiles="@(_StageFile)" DestinationFolder="$(ModStageDir)" />
+    <Copy SourceFiles="@(_StageFile)" DestinationFolder="$(_ArchiveRoot)/wobbly-windows" />
+    <ZipDirectory SourceDirectory="$(_ArchiveRoot)" DestinationFile="$(ModArchive)" Overwrite="true" />
+    <GetFileHash Files="$(ModArchive)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_ArchiveHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(ModArchive).sha256" Lines="@(_ArchiveHash->'%(FileHash)  %(Filename)%(Extension)')" Overwrite="true" Encoding="ASCII" />
+    <Message Importance="high" Text="Built installable mod and archive: $(ModArchive)" />
+  </Target>
+  <Target Name="CleanModDistribution" AfterTargets="Clean" Condition="'$(Configuration)' == 'Release' and '$(RunChecks)' != 'true'">
+    <RemoveDir Directories="$(ModStageDir);$(IntermediateOutputPath)mod-package" />
+    <Delete Files="$(ModArchive);$(ModArchive).sha256" />
+  </Target>
+</Project>

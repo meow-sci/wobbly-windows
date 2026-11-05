@@ -1,0 +1,7 @@
+name = "wobbly-windows"
+description = "Live spring-driven wobble for floating KSA windows. Native mouse hitboxes remain unchanged."
+version = "0.1.0"
+author = "meow sci"
+
+[StarMap]
+EntryAssembly = "WobblyWindows"

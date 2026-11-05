@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+/artifacts/
+/Local.Build.props
+/settings.json
+.DS_Store

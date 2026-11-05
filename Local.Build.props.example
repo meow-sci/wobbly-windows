@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <KSAFolder>/absolute/path/to/ksa-game-assemblies/current/dll</KSAFolder>
+  </PropertyGroup>
+</Project>
