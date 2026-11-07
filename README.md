@@ -14,7 +14,7 @@ Compatibility with other mods that replace or resize finalized ImGui draw data n
 
 ## Use
 
-Install the `wobbly-windows` folder from the release ZIP in your StarMap mod location and enable its ID. Open the **Wobbly Windows** game menu for settings. The effect is enabled by default. Choose Subtle, Classic, or Playful; adjust strength, responsiveness, and settling; exclude individual windows or disable the effect for reduced motion. Preferences are saved to `settings.json` alongside the installed mod.
+Install the `wobbly-windows` folder from the release ZIP in your StarMap mod location and enable its ID. Open the **Wobbly Windows** game menu for settings. The effect is enabled with the Playful preset by default. Choose Subtle, Classic, or Playful; adjust strength, responsiveness, and settling; exclude individual windows or disable the effect for reduced motion. Preferences are saved to `settings.json` alongside the installed mod.
 
 The mouse continues to interact with native rectangles during settling. Clicking a visually displaced control can miss it or hit a different control. There is no input remapping or artificial click blocking.
 

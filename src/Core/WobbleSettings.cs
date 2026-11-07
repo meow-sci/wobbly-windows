@@ -5,16 +5,16 @@ namespace WobblyWindows.Core;
 internal sealed class WobbleSettings
 {
     public bool Enabled { get; set; } = true;
-    public float Strength { get; set; } = 1;
-    public float Frequency { get; set; } = 3.2f;
-    public float Damping { get; set; } = 0.48f;
+    public float Strength { get; set; } = 1.5f;
+    public float Frequency { get; set; } = 2.7f;
+    public float Damping { get; set; } = 0.36f;
     public HashSet<uint> ExcludedWindows { get; set; } = [];
 
     public void Normalize()
     {
-        Strength = Clamp(Strength, 0, 2, 1);
-        Frequency = Clamp(Frequency, 2, 6, 3.2f);
-        Damping = Clamp(Damping, 0.25f, 1, 0.48f);
+        Strength = Clamp(Strength, 0, 2, 1.5f);
+        Frequency = Clamp(Frequency, 2, 6, 2.7f);
+        Damping = Clamp(Damping, 0.25f, 1, 0.36f);
         ExcludedWindows ??= [];
     }
 
