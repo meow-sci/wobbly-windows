@@ -171,7 +171,7 @@ Start with ordinary, movable top-level windows. Children inherit their root's de
 
 Use IDs and structural flags for policy, with a small explicit override/opt-out API for other mods. Titles alone are unreliable identifiers. Do not permanently move a window's logical position, modify its saved layout, or change the game's UI scale to achieve the effect.
 
-Settings should include enable, reduced motion/off, presets, strength, settling, per-window exclusions, reset, and a live sample window. Show an understandable compatibility message when deformation is unavailable. Keep diagnostics such as vertices, processing time, active roots, and exclusion reasons behind an advanced panel. Use the existing ImGui layout patterns for aligned controls; avoid adding the entire unscience UI dependency just for padding helpers.
+Settings should include enable, reduced motion/off, presets, strength, settling, per-window exclusions, and reset. Show an understandable compatibility message when deformation is unavailable. Keep diagnostics such as vertices, processing time, active roots, and exclusion reasons behind an advanced panel. Use the existing ImGui layout patterns for aligned controls; avoid adding the entire unscience UI dependency just for padding helpers.
 
 ## Alternative rendering strategies
 
@@ -208,7 +208,7 @@ The build should target .NET 10 and an XML `.slnx`. A plain Release build must a
 | Milestone | Deliverable | Evidence needed before advancing |
 | --- | --- | --- |
 | 1. Compatibility and callback probe | Tiny diagnostic mod; no wobble | Main-context identity; installed game/loader versions; safe compatibility checks; callback timing; visually identical identity substitution/restoration; clean unload; unchanged secondary context |
-| 2. Single-window deformation | One allowlisted sample window during title-bar drag | Exact grab point, original z-order, live changing contents, same shape in coverage mask and visible draw, no artifacts after disable |
+| 2. Single-window deformation | One allowlisted ordinary window during title-bar drag | Exact grab point, original z-order, live changing contents, same shape in coverage mask and visible draw, no artifacts after disable |
 | 3. Geometry reconstruction | Clipped/tessellated output and child support | Scroll/table clips, glyphs/images, anti-aliasing, translucent content, 16-bit segmentation, zero partial publication, source buffers unchanged |
 | 4. Motion quality | Stable lattice and presets | Repeatable response across frame rates, bounded stall behavior, no folding, exact sleep/identity, resize/close/focus transitions |
 | 5. Release behavior and native input | Natural settling with unchanged mouse hitboxes | Predictable short settle; exact targeting restored at rest; native drag/capture, wheel/text/selection, and game cursor unaffected; explain temporary visual targeting offset |

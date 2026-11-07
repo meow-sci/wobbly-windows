@@ -28,7 +28,7 @@ public sealed class Mod
             Patch(typeof(Program), nameof(Program.DrawProgramMenusHook), nameof(Menu), false, []);
             Patch(typeof(ImGuiBackend), nameof(ImGuiBackend.Shutdown), nameof(BeforeBackendShutdown), true, []);
             Patch(typeof(GameSettings), nameof(GameSettings.OnKeyAll), nameof(GuardTextInput), true);
-            WobbleRuntime.Log("Loaded. Open the Wobbly Windows menu for settings and a sample window.");
+            WobbleRuntime.Log("Loaded. Open the Wobbly Windows menu for settings.");
         }
         catch (Exception error)
         {

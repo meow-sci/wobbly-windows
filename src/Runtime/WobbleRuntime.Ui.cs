@@ -6,10 +6,9 @@ namespace WobblyWindows.Runtime;
 
 internal unsafe sealed partial class WobbleRuntime
 {
-    private bool _settingsVisible, _demoVisible, _identityOutput;
+    private bool _settingsVisible, _identityOutput;
     private string? _saveError;
     private DateTime _saveAt = DateTime.MaxValue;
-    private int _demoClicks;
 
     public void DrawMenu()
     {
@@ -20,7 +19,6 @@ internal unsafe sealed partial class WobbleRuntime
             if (ImGui.MenuItem("Enabled"u8, default, _settings.Enabled))
             { _settings.Enabled = !_settings.Enabled; Changed(); }
             if (ImGui.MenuItem("Settings"u8, default, _settingsVisible)) _settingsVisible = !_settingsVisible;
-            if (ImGui.MenuItem("Sample window"u8, default, _demoVisible)) _demoVisible = !_demoVisible;
         }
         finally { ImGui.EndMenu(); }
     }
@@ -30,7 +28,6 @@ internal unsafe sealed partial class WobbleRuntime
         if (_disposed) return;
         if (DateTime.UtcNow >= _saveAt) SaveSettings();
         if (_settingsVisible) DrawSettings();
-        if (_demoVisible) DrawDemo();
     }
 
     private void DrawSettings()
@@ -73,8 +70,6 @@ internal unsafe sealed partial class WobbleRuntime
                 }
             }
             finally { ImGui.PopStyleVar(); }
-            if (ImGui.Button(" Open sample window "u8)) _demoVisible = true;
-            ImGui.SameLine(0, 8);
             if (ImGui.Button(" Reset preferences "u8))
             { _settings = new(); _identityOutput = false; Changed(); }
             ImGui.Spacing();
@@ -109,27 +104,6 @@ internal unsafe sealed partial class WobbleRuntime
     {
         ImGui.TableNextRow(); ImGui.TableNextColumn(); ImGui.AlignTextToFramePadding(); ImGui.Text(label);
         ImGui.TableNextColumn(); ImGui.SetNextItemWidth(-1);
-    }
-
-    private void DrawDemo()
-    {
-        ImGui.SetNextWindowViewport(ImGui.GetMainViewport().ID);
-        ImGui.SetNextWindowSize(new float2(420, 330), ImGuiCond.FirstUseEver);
-        bool visible = ImGui.Begin("Wobble sample###WobblyWindows.Sample"u8, ref _demoVisible);
-        try
-        {
-            if (!visible) return;
-            ImGui.TextWrapped("Drag this title bar, reverse direction, then release. This counter and progress bar stay live during the wobble."u8);
-            ImGui.Text($"Time: {ImGui.GetTime():F2} seconds | Clicks: {_demoClicks}");
-            float progress = (float)(0.5 + 0.5 * Math.Sin(ImGui.GetTime() * 2));
-            ImGui.ProgressBar(progress);
-            if (ImGui.Button(" Click after settling "u8)) ++_demoClicks;
-            ImGui.Separator();
-            bool child = ImGui.BeginChild("##scroll-test"u8, new float2(0, 150), ImGuiChildFlags.Borders);
-            try { if (child) for (int i = 0; i < 40; ++i) ImGui.Text($"Scrollable content {i + 1:00} — clipped to this child region"); }
-            finally { ImGui.EndChild(); }
-        }
-        finally { ImGui.End(); }
     }
 
     private void Preset(float strength, float frequency, float damping)
