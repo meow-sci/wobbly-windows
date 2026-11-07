@@ -32,6 +32,12 @@ The single `WobblyWindows.csproj` owns compilation and the entire distribution. 
 
 Packaging uses MSBuild's copy, ZIP and hash tasks. It requires no external staging script or additional packaging command. Only the mod DLL, dependency manifest, mod manifest, license, and this README are shipped. Game/loader/Harmony/native ImGui assemblies are host-owned and excluded. Building never installs into or removes files from the game directory.
 
+## Releases
+
+GitHub Actions follows purr2d2's rolling release pattern: pushes and manual runs on `main` publish stable releases; every other branch publishes betas. Versions are `MAJOR.RUN.0` or `MAJOR.RUN.0-beta`, using `release-major.txt` and the workflow run number. CI stamps matching project and manifest versions, builds and checks the installable ZIP and SHA-256 checksum, then publishes both. Pull requests validate only; fork PRs run the offline release-policy checks because they cannot access the private game references.
+
+The workflow uses the `KSA_GAME_ASSEMBLIES_PAT` secret to read the pinned KSA 2026.10.25.5707 assemblies. Reruns preserve existing releases. Automatic cleanup keeps the latest 10 stable releases and 5 betas across branches, deleting older rolling releases and their tags. See [release maintenance](docs/releases.md) for details and local checks.
+
 ## Checks
 
 The same project has an isolated executable check configuration; it does not produce a mod distribution:

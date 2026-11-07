@@ -1,0 +1,146 @@
+name: Build mod dist
+
+# Keep this workflow file: its run_number is the build counter across branches.
+# main -> MAJOR.RUN.0 stable; every other branch -> MAJOR.RUN.0-beta.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dist-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify release policy offline
+        run: python3 tools/check-release-policy.py
+
+  build:
+    needs: policy
+    # Fork PRs can run policy checks without private game-assembly credentials.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      publish: ${{ steps.meta.outputs.publish }}
+      channel: ${{ steps.meta.outputs.channel }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      title: ${{ steps.meta.outputs.title }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    env:
+      KSA_DLL_DIR: ${{ github.workspace }}/.tmp/ksa-game-assemblies/current/dll
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Checkout private KSA assemblies
+        uses: actions/checkout@v6
+        with:
+          repository: meow-sci/ksa-game-assemblies
+          path: .tmp/ksa-game-assemblies
+          token: ${{ secrets.KSA_GAME_ASSEMBLIES_PAT }}
+          persist-credentials: false
+          # Audited KSA 2026.10.25.5707 snapshot; update with compatibility reviews.
+          ref: 4b3e9e2281c6eec25c9ab77ddf2961ec53ec3dc8
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Compute release metadata
+        id: meta
+        run: bash tools/release-metadata.sh
+      - name: Stamp project and manifest versions
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: python3 tools/stamp-release-version.py "$VERSION"
+      - name: Build solution and installable ZIP
+        run: dotnet build WobblyWindows.slnx -c Release -p:RestoreLockedMode=true --nologo -v quiet
+      - name: Validate distribution
+        run: python3 tools/validate-dist.py artifacts/stage/wobbly-windows
+      - name: Run game-free checks
+        run: dotnet run --project WobblyWindows.csproj -c Debug -p:RunChecks=true -p:RestoreLockedMode=true --nologo
+      - name: Verify release archive
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: python3 tools/check-release-archive.py artifacts/stage/wobbly-windows "artifacts/dist/wobbly-windows-$VERSION.zip"
+      - name: Upload validated release assets
+        if: steps.meta.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wobbly-windows-release
+          path: |
+            artifacts/dist/*.zip
+            artifacts/dist/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: wobbly-windows-release
+          path: artifacts/dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WOBBLY_WINDOWS_DIST_DIR: ${{ github.workspace }}/artifacts/dist
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
+          TITLE: ${{ needs.build.outputs.title }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: bash tools/publish-release.sh
+
+  prune:
+    needs: [build, publish]
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # All beta branches share one retention pool, serialized across branches.
+    concurrency:
+      group: rolling-release-cleanup-${{ needs.build.outputs.channel }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prune old releases and their tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ needs.build.outputs.channel }}
+        run: |
+          case "$CHANNEL" in
+            main) KEEP=10 ;;
+            beta) KEEP=5 ;;
+            *) echo "Unknown release channel: $CHANNEL" >&2; exit 1 ;;
+          esac
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            | python3 tools/release-retention.py --channel "$CHANNEL" --keep "$KEEP" \
+            > "$RUNNER_TEMP/wobbly-windows-stale-releases.txt"
+          while IFS= read -r tag; do
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          done < "$RUNNER_TEMP/wobbly-windows-stale-releases.txt"
