@@ -4,6 +4,7 @@ using Brutal.ImGuiApi;
 using Brutal.Numerics;
 using WobblyWindows.Core;
 using WobblyWindows.Rendering;
+using WobblyWindows.Runtime;
 
 namespace WobblyWindows.Checks;
 
@@ -14,6 +15,7 @@ internal static unsafe class Checks
     {
         try
         {
+            Run("host binding layouts and renderer capabilities", CompatibilityChecks);
             Run("native views and transactional restoration", Publication);
             Run("corner anchoring, bounded motion and settling", Motion);
             Run("consistent motion across frame rates", FrameRates);
@@ -59,6 +61,20 @@ internal static unsafe class Checks
         publication.Publish(&data, 999, 777); publication.Dispose();
         Require((nint)data.CmdLists.DataRaw == before && data.TotalVtxCount == 1 && data.TotalIdxCount == 0, "Dispose did not restore");
         Require(original.Vertices.Span[0].pos.X == 1, "Original buffer altered/freed");
+    }
+
+    private static void CompatibilityChecks()
+    {
+        Compatibility.ValidateBindings();
+        Compatibility.ValidateRenderer(ImGuiBackendFlags.RendererHasVtxOffset);
+        Compatibility.ValidateRenderer(ImGuiBackendFlags.RendererHasVtxOffset | ImGuiBackendFlags.RendererHasTextures);
+        try { Compatibility.ValidateRenderer(ImGuiBackendFlags.RendererHasTextures); }
+        catch (NotSupportedException error)
+        {
+            Require(error.Message.Contains("RendererHasVtxOffset"), "Missing capability diagnostic is not actionable");
+            return;
+        }
+        throw new InvalidOperationException("Renderer without vertex offsets was accepted");
     }
 
     private static SpringSurface MovingSurface(Vector2? grab = null)

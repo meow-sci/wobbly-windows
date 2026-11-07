@@ -19,7 +19,7 @@ internal unsafe sealed partial class WobbleRuntime : IDisposable
     private readonly ImGuiContextHookCallback _callback;
     private readonly ImGuiID[] _hookIds = new ImGuiID[3];
     private ImGuiContext* _context;
-    private bool _checked, _disposed, _insideCallback;
+    private bool _disposed, _insideCallback;
     private int _lastFrame = -1;
     private string? _fault;
     private int _activeCount, _outputVertices;
@@ -51,10 +51,10 @@ internal unsafe sealed partial class WobbleRuntime : IDisposable
         if (_disposed || _fault != null) return;
         try
         {
-            if (!_checked) { Compatibility.Validate(); _checked = true; }
             ImGuiContextPtr current = ImGui.GetCurrentContext();
             if (current.IsNull()) return;
             if (_context == current.Ptr) return;
+            Compatibility.Validate();
             if (_context != null) Detach();
             _context = current.Ptr;
             nint callback = Marshal.GetFunctionPointerForDelegate(_callback);

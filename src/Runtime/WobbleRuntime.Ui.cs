@@ -94,7 +94,7 @@ internal unsafe sealed partial class WobbleRuntime
             }
             if (ImGui.CollapsingHeader("Diagnostics"u8))
             {
-                ImGui.Text($"Supported game: {Compatibility.GameBuild}");
+                ImGui.Text($"Reference game build: {Compatibility.ReferenceGameBuild}");
                 ImGui.Text($"Status: {_frameStatus}");
                 ImGui.Text($"Active windows: {_activeCount} | output vertices: {_outputVertices}");
                 ImGui.Text($"CPU processing: {_processingMs:F3} ms");

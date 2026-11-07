@@ -4,7 +4,9 @@ Spring-driven wobble for ordinary floating ImGui windows in Kitten Space Agency.
 
 ## Compatibility
 
-This initial release targets the inspected Windows x64 KSA **2026.10.25.5707** binaries (Dear ImGui 1.92.2), with StarMap. It checks the loaded KSA/BRUTAL module identities and native ImGui fingerprint before touching internal structures. An unknown build disables the effect with a diagnostic instead of guessing the layout. New game builds need an audited compatibility update.
+Designed for Windows x64, Linux x86_64, and the unofficial Linux-based macOS ARM64 port, with StarMap. KSA **2026.10.25.5707** (Dear ImGui 1.92.2) is the development reference, not an exact-build requirement. The same mod DLL uses the game's BRUTAL.ImGui bindings and platform-native ImGui library; it does not select a native filename or require Windows binary fingerprints or assembly IDs.
+
+The game or port must provide matching BRUTAL/native ImGui libraries, including the internal context-hook functions used through BRUTAL. The mod checks its 64-bit vector-header assumptions and the renderer's vertex-offset capability after a context exists. Missing APIs or incompatible capabilities disable the effect with a diagnostic. Internal window/context access still depends on the host bindings matching native ImGui; these checks do not independently certify that pairing. New game versions are allowed, but changes to internal ImGui or renderer behavior can require an update. Full in-game acceptance is required on each platform.
 
 Docked windows, popups, menus, tooltips, custom draw callbacks (including gauges), secondary/offscreen contexts, detached platform windows, and windows touching the viewport boundary are excluded. Child windows share their root's deformation. Ordinary purrtty windows can participate; its in-world panels remain unchanged.
 
@@ -46,7 +48,7 @@ The same project has an isolated executable check configuration; it does not pro
 dotnet run --project WobblyWindows.csproj -c Debug -p:RunChecks=true
 ```
 
-The checks cover the solver, clipping and attribute interpolation, index segmentation, native output ownership, and draw-data substitution/restoration. They do not initialize native ImGui or launch KSA.
+The checks cover host binding layouts and renderer capabilities, the solver, clipping and attribute interpolation, index segmentation, native output ownership, and draw-data substitution/restoration. They do not initialize native ImGui or launch KSA.
 
 In-game acceptance still requires dragging and releasing windows with UI pixel culling on/off, overlapping roots and scrolling children, hiding/restoring the HUD, resizing, pause/time warp, live purrtty output, and disabling/unloading. The diagnostics panel includes an identity-output mode for checking substitution independently of wobble.
 

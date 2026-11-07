@@ -2,6 +2,8 @@
 
 Research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10.25.5707**.
 
+Compatibility update (November 7, 2026): the implementation now delegates native library resolution and the managed/native ImGui pairing to the host BRUTAL bindings on Windows x64, Linux x86_64, and the unofficial macOS ARM64 port. The Windows hashes below record the original research baseline, not runtime acceptance requirements. Runtime checks cover the mod-created vector headers and renderer vertex-offset capability; assembly identities, native filenames/hashes, and ImGui version strings no longer gate execution. Internal ABI correctness remains a host responsibility, and per-platform in-game acceptance is still required.
+
 **A high-quality wobbly windows mod looks technically feasible. The strongest starting architecture is a CPU spring simulation plus deformation of live ImGui draw geometry, using the game's existing renderer.** A custom shader is optional. The difficult parts are clipping, draw-data ownership, and UI occlusion. Mouse hitboxes will remain unchanged: waiting for the release wobble to settle before targeting controls is an accepted interaction tradeoff.
 
 The intended experience is a window that follows the exact grab point, bends smoothly during movement, settles naturally, keeps its contents live, and returns to normal mouse targeting when settled. This document records the source research. The subsequent implementation uses the single-project purr2d2 structure requested for this mod; see [the README](/Users/asherwin/wip/wobbly-windows/repos/wobbly-windows-remote/README.md) for current build and validation instructions. An in-game feasibility demonstration remains outstanding.
@@ -31,7 +33,7 @@ Brutal.ImGui.dll 9fec93ddeda6b2127cd2bf1db115dbdef1e326b74c775e74917069c007b926f
 KSA.dll          a7acc114a016f0fb8c35a132be4ffdef61dcd69c8d0f7e132dd468b7532e006c
 ```
 
-Use these as reproducibility fingerprints, not as proof that another installed build or platform is compatible. Reject an unknown internal layout before unsafe access. `DebugCheckVersionAndDataLayout` may assert on a mismatch and does not certify internal window/context layouts; it is not a safe substitute for a compatibility policy. The game version is recorded in [version.json][version].
+Use these as reproducibility fingerprints, not as proof that another installed build or platform is compatible. The current implementation trusts the host's BRUTAL/native pairing instead of rejecting different fingerprints. `DebugCheckVersionAndDataLayout` may assert on a mismatch and does not certify internal window/context layouts; it is not used as a runtime compatibility probe. The reference game version is recorded in [version.json][version].
 
 ## Why the renderer can support this
 

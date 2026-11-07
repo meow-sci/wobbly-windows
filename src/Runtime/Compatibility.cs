@@ -1,40 +1,50 @@
-using System.Diagnostics;
-using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using Brutal.ImGuiApi;
-using Brutal.ImGuiApi.Internal;
+using WobblyWindows.Rendering;
 
 namespace WobblyWindows.Runtime;
 
 internal static class Compatibility
 {
-    public const string GameBuild = "2026.10.25.5707";
-    private const string NativeHash = "F9BA4A3BE42035DDA61F0F3DF3B97632FD69627BEF5D267641CD7A4D189BC331";
+    public const string ReferenceGameBuild = "2026.10.25.5707";
 
-    public static unsafe void Validate()
+    public static void Validate()
     {
-        // Check loaded metadata and the actual loaded native module before reading any internal pointer.
-        Require(typeof(KSA.Program).Module.ModuleVersionId == new Guid("a6318490-1e4f-4d4c-9f1a-b48f97f44be4"), "KSA build");
-        Require(typeof(ImGui).Module.ModuleVersionId == new Guid("ed379898-6c19-48b8-a05b-be57942bf38e"), "BRUTAL ImGui build");
-        Require(typeof(Brutal.Numerics.float2).Module.ModuleVersionId == new Guid("4d69b4eb-c834-4206-8169-3207d83f3583"), "BRUTAL numerics build");
-        Require(typeof(Brutal.Pointers.Ptr<byte>).Module.ModuleVersionId == new Guid("4719236f-7bcd-479e-8038-953892edb33d"), "BRUTAL memory build");
-        Require(IntPtr.Size == 8 && sizeof(ImGuiContext) == 11320 && sizeof(ImGuiWindow) == 1224
-            && sizeof(ImDrawList) == 224 && sizeof(ImDrawData) == 72 && sizeof(ImDrawCmd) == 72
-            && sizeof(ImDrawVert) == 20 && sizeof(ImVector<ushort>) == 16 && sizeof(ImGuiContextHook) == 32, "native layouts");
-        using var process = Process.GetCurrentProcess();
-        string? modulePath = null;
-        foreach (ProcessModule module in process.Modules)
-        {
-            if (string.Equals(module.ModuleName, "imgui.dll", StringComparison.OrdinalIgnoreCase))
-            { modulePath = module.FileName; break; }
-        }
-        Require(modulePath != null, "loaded native imgui.dll (Windows x64 profile)");
-        using var file = File.OpenRead(modulePath!);
-        Require(Convert.ToHexString(SHA256.HashData(file)) == NativeHash, "native ImGui build");
-        Require(ImGui.GetVersion().ToString() == "1.92.2", "native ImGui version");
+        ValidateBindings();
+        ValidateRenderer(ImGui.GetIO().BackendFlags);
+        // BRUTAL owns native library resolution and the binding/native ABI pairing, just as
+        // it does for the game. Versions are diagnostic information, not a binary whitelist.
+        WobbleRuntime.Log($"Using host BRUTAL.ImGui / Dear ImGui {ImGui.GetVersion().ToString()} on {RuntimeInformation.OSDescription} ({RuntimeInformation.ProcessArchitecture}).");
     }
 
-    private static void Require(bool condition, string item)
+    internal static void ValidateBindings()
     {
-        if (!condition) throw new NotSupportedException($"Unsupported {item}. Wobble is disabled; this release supports KSA {GameBuild} with its original ImGui binaries.");
+        Require(IntPtr.Size == 8, $"a 64-bit runtime is required (found {IntPtr.Size * 8}-bit)");
+        ValidateVector<ImDrawVert>();
+        ValidateVector<ushort>();
+        ValidateVector<ImDrawCmd>();
+        ValidateVector<ImDrawListPtr>();
+    }
+
+    private static unsafe void ValidateVector<T>() where T : unmanaged
+    {
+        // NativeBuffer builds these headers itself. Check that assumption against the
+        // loaded C# bindings before reinterpreting memory, without pinning whole structs.
+        Require(sizeof(ImVector<T>) == 2 * sizeof(int) + IntPtr.Size,
+            $"BRUTAL ImVector<{typeof(T).Name}> has an incompatible header size ({sizeof(ImVector<T>)} bytes)");
+        using var buffer = new NativeBuffer<T>();
+        buffer.Add(default);
+        ImVector<T> view = buffer.View;
+        Require(view.Count == buffer.Count && view.Capacity == buffer.Capacity && view.DataRaw == buffer.Pointer,
+            $"BRUTAL ImVector<{typeof(T).Name}> has an incompatible header layout");
+    }
+
+    internal static void ValidateRenderer(ImGuiBackendFlags flags) =>
+        Require((flags & ImGuiBackendFlags.RendererHasVtxOffset) != 0,
+            "the host ImGui renderer must support vertex offsets for 16-bit draw lists (RendererHasVtxOffset)");
+
+    private static void Require(bool condition, string reason)
+    {
+        if (!condition) throw new NotSupportedException($"Wobble is disabled: {reason}.");
     }
 }
