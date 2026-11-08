@@ -1,6 +1,11 @@
 # Wobbly Windows implementation research
 
-Research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10.25.5707**.
+Historical research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10.25.5707**.
+
+Current reviewed target: **2026.11.10.5801**. See the
+[November 8 compatibility review](#ksa-202611105801-compatibility-review-november-8-2026)
+for the upgrade evidence and remaining in-game acceptance. The original research
+and native fingerprints below describe the historical baseline.
 
 Compatibility update (November 7, 2026): the implementation now delegates native library resolution and the managed/native ImGui pairing to the host BRUTAL bindings on Windows x64, Linux x86_64, and the unofficial macOS ARM64 port. The Windows hashes below record the original research baseline, not runtime acceptance requirements. Runtime checks cover the mod-created vector headers and renderer vertex-offset capability; assembly identities, native filenames/hashes, and ImGui version strings no longer gate execution. Internal ABI correctness remains a host responsibility, and per-platform in-game acceptance is still required.
 
@@ -8,7 +13,7 @@ Compatibility update (November 7, 2026): the implementation now delegates native
 
 The intended experience is a window that follows the exact grab point, bends smoothly during movement, settles naturally, keeps its contents live, and returns to normal mouse targeting when settled. This document records the source research. The subsequent implementation uses the single-project purr2d2 structure requested for this mod; see [the README](/Users/asherwin/wip/wobbly-windows/repos/wobbly-windows-remote/README.md) for current build and validation instructions. An in-game feasibility demonstration remains outstanding.
 
-## Evidence and compatibility baseline
+## Historical evidence and compatibility baseline
 
 Three research agents independently investigated the game pipeline, ImGenie and motion design, and loader/community-mod integration. The findings below combine their work with direct source inspection. Existing notes were checked against the newer local game snapshot.
 
@@ -239,7 +244,68 @@ The fix splits each grid cell along a common diagonal and uses one affine mappin
 
 Regression checks include a captured thin console triangle (fails with the previous processor), raster coverage of the same rectangle with different source triangulations, and the existing local-fold rejection. A 3,000-frame headless native replay also exercises rounded chrome and a child body. These checks do not replace visual acceptance in the running game, including its GPU coverage-mask pass.
 
-## Source locations
+## KSA 2026.11.10.5801 compatibility review (November 8, 2026)
+
+**Outcome: mechanical fixes to compatibility metadata and the CI snapshot pin;
+no runtime behavior changes required by the reviewed source contracts.**
+
+The baseline is KSA `2026.10.25.5707`, assemblies revision
+`4b3e9e2281c6eec25c9ab77ddf2961ec53ec3dc8`. The runtime reference build,
+previous CI pin, release notes and historical research all agreed on that
+baseline; the supplied previous checkout also matches it. The target is KSA
+`2026.11.10.5801`, assemblies revision
+`4de698e8cf248c29fc95f188fb258775d6e574a3`. Its `version.json` records
+`date: 2026-11-07`, `fromRevision: 5707` and `toRevision: 5801`.
+The supplied target checkout is at
+`d07b8700c347dc2e2ac1472e829b644fdc15ba8d`; its entire `current/` tree is
+identical to the pinned snapshot commit. Both source snapshots and the complete
+target managed DLL directory were reviewed; upstream trees were left unchanged.
+
+| Upstream contract and mod coupling | Review result |
+| --- | --- |
+| `Program.PrepareImGui(double)` / `Mod.PrepareFrame`, menu hook / `Mod.Menu`, backend shutdown / `Mod.BeforeBackendShutdown`, `GameSettings.OnKeyAll` / `Mod.GuardTextInput` | All four required targets retain their signatures and relevant timing. `OnKeyAll(GlfwKeyEvent)` remains the only overload and returns `true` for a consumed key. Program still dispatches it before console/game hotkeys; the console exception and `WantTextInput` guard remain appropriate. The menu hook still runs inside `BeginMenuBar`/`EndMenuBar`, with the same viewport menu-capture contract. |
+| Context callbacks, native window and draw structures / `WobbleRuntime`, `NativeBuffer`, `OwnedDrawList`, `DrawPublication` | Context/window structs and pointer wrappers, hook struct/enum/Cdecl delegate, IO, draw list/data/command/vertex structs, texture references and backend flags are byte-for-byte unchanged in the decompiled source. `ImVector` only adds `unsafe` modifiers to enumerators; its size/capacity/pointer layout is unchanged. Window flag aliases retain their numeric values. No new draw-list internals need populating. |
+| `Program.OnFrame`, `RenderGame`, `RenderEditor`, `PostRender` / publication lifetime | Main-context preparation still precedes `NewFrame`; `ImGui.Render` finishes before mask generation and visible UI rendering. Both consumers fetch final draw data after the render hook. Platform-window rendering still finishes in `PostRender`, before the following frame restores borrowed headers. `ImGuiBackend` initialization/shutdown is unchanged; the shutdown prefix still precedes backend disposal. No new final draw-data consumer was found. |
+| `ImGuiBackendVulkanImpl`, `UiCoverageMaskSystem` / replacement geometry | Upload and replay still read only the populated list buffers and commands, use 16-bit indices plus command/list offsets, and scale clipping with draw-data framebuffer scale. Texture trust, alpha, callback and explicit rectangle policies are preserved; coverage shaders are unchanged. HDR scene/UI brightness changes do not alter this geometry contract. |
+| `ImGuiBackendGlfwImpl.NewFrame` / `GeometryProcessor` | Removed duplicate assignments that overwrote display size and framebuffer/window ratio with monitor content scale. The retained `GetFramebufferScale` computes framebuffer size divided by window size. The mod already derives tessellation quality from `ImDrawData.FramebufferScale`, as both render consumers do for scissors. No scale compensation is needed. |
+| `ConsoleStyle`, `ImGuiWindow`, `GaugeCanvas` / eligibility and family ownership | Themed bezel/body geometry and native dragging remain equivalent. Gauge lookup now uses `Registered`, but still submits a custom callback; its family remains excluded. `GaugeCanvas` is still the sole explicit `AddOccluder` caller. Existing thin-triangle and shared-warp checks continue to cover themed geometry. |
+| StarMap, references and distribution / `Mod`, project and manifest | Retained compile-only `StarMap.API` 0.3.6 and `Lib.Harmony` 2.4.2 with the locked restore and existing host assembly set. Entry/lifecycle declarations and `KSA.Mod.DirectoryPath` still compile. KSA's `ModLibrary.LoadAll` now accepts optional progress; compatibility of the installed loader's own game patches still requires live acceptance with a loader supporting this game build. The single entry assembly and five-file package are unchanged. |
+
+Updated `Compatibility.ReferenceGameBuild`, the missing-DLL diagnostic, the CI
+snapshot pin/comment and `docs/releases.md` together. No native hashes,
+version whitelist, package upgrades, motion tuning or input mapping changes
+were introduced. The coupling catalog in the upgrade skill remains current.
+
+Validation host: macOS ARM64, .NET SDK `10.0.403`, runtime `10.0.14`, Python
+`3.12.8`. Build and game-free checks explicitly selected the target snapshot's
+`current/dll` directory through `-p:KSAFolder=...` and used
+`-p:RestoreLockedMode=true`.
+
+- Release solution build with `--no-incremental`: passed, zero warnings/errors.
+- Debug `RunChecks=true` executable: all 13 groups passed, including native
+  header views/restoration, motion, clipping/attributes, thin themed geometry,
+  shared-warp coverage, 16-bit segmentation, rejection/budgets/folds and warm
+  allocation checks. These use managed bindings without launching native ImGui.
+- `tools/validate-dist.py`: passed, exact five-file inventory, matching versions
+  and host dependency exclusions.
+- `tools/check-release-archive.py`: passed, ZIP matches stage and SHA-256.
+- `tools/check-release-policy.py`: passed using Python 3.12.8; the default
+  system Python 3.9 lacks the required `tomllib` module.
+
+The local development version remains `0.1.0`; CI continues to derive mod
+release versions separately from `release-major.txt` and its run counter.
+
+**In-game acceptance is pending on Windows x64, Linux x86_64 and the unofficial
+macOS ARM64 port.** The supplied target contains managed DLLs and decompiled
+source, without a runnable game/StarMap launcher or matching native ImGui
+library. No game was launched, so this audit does not prove Harmony patch
+application, installed loader compatibility, native internal ABI, live callback
+timing, GPU coverage-mask parity, drag/settle visuals, text/menu/console input,
+DPI changes or shutdown/context recreation. Run the upgrade skill's full
+in-game acceptance checklist with a matching host/loader/native pair before
+recording platform acceptance.
+
+## Historical source locations
 
 Local links below point to the inspected snapshots. Commit identifiers above provide the reproducibility boundary.
 

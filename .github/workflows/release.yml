@@ -53,8 +53,8 @@ jobs:
           path: .tmp/ksa-game-assemblies
           token: ${{ secrets.KSA_GAME_ASSEMBLIES_PAT }}
           persist-credentials: false
-          # Audited KSA 2026.10.25.5707 snapshot; update with compatibility reviews.
-          ref: 4b3e9e2281c6eec25c9ab77ddf2961ec53ec3dc8
+          # Audited KSA 2026.11.10.5801 snapshot; update with compatibility reviews.
+          ref: 4de698e8cf248c29fc95f188fb258775d6e574a3
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x

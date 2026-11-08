@@ -28,7 +28,7 @@
     </Reference>
   </ItemGroup>
   <Target Name="ValidateHostReferences" BeforeTargets="ResolveAssemblyReferences">
-    <Error Condition="!Exists('$(KSAFolder)/%(HostAssembly.Identity).dll')" Text="Missing %(HostAssembly.Identity).dll. Set KSAFolder or KSA_DLL_DIR to the complete KSA 2026.10.25.5707 DLL snapshot." />
+    <Error Condition="!Exists('$(KSAFolder)/%(HostAssembly.Identity).dll')" Text="Missing %(HostAssembly.Identity).dll. Set KSAFolder or KSA_DLL_DIR to the complete KSA 2026.11.10.5801 DLL snapshot." />
   </Target>
   <Target Name="BuildModDistribution" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' and '$(DesignTimeBuild)' != 'true' and '$(RunChecks)' != 'true'">
     <ItemGroup>
