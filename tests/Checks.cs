@@ -22,6 +22,8 @@ internal static unsafe class Checks
             Run("stall, resize, teleport and strength resets", Transitions);
             Run("source clipping preserves UV and color", Clipping);
             Run("identity raster coverage matches original clipping", RasterIdentity);
+            Run("thin themed geometry preserves continuous output", ThinThemedGeometry);
+            Run("shared warp preserves coverage across source triangulations", SharedWarpCoverage);
             Run("16-bit command segmentation and offsets", Segmentation);
             Run("callbacks, malformed input and budget fallback", Rejection);
             Run("tile work cap and locally folded geometry fallback", WorkAndFolds);
@@ -257,7 +259,8 @@ internal static unsafe class Checks
     private static void Segmentation()
     {
         using var source = new OwnedDrawList(); using var output = new OwnedDrawList();
-        source.Vertices.Add(Vertex(1, 1)); source.Vertices.Add(Vertex(2, 1)); source.Vertices.Add(Vertex(1, 2));
+        // Keep this triangle within one grid half so this check isolates index segmentation.
+        source.Vertices.Add(Vertex(10, 1)); source.Vertices.Add(Vertex(11, 1)); source.Vertices.Add(Vertex(10, 2));
         for (int i = 0; i < 23_000; ++i) { source.Indices.Add(0); source.Indices.Add(1); source.Indices.Add(2); }
         source.Commands.Add(new ImDrawCmd { ClipRect = new float4(0, 0, 20, 20), ElemCount = 69_000 }); source.Complete(default);
         var surface = new SpringSurface(); surface.Reset(Vector2.Zero, new(400, 300));
@@ -274,6 +277,75 @@ internal static unsafe class Checks
             }
         }
         Require(drawn == 69_000, "Triangles lost across chunks");
+    }
+
+    private static void ThinThemedGeometry()
+    {
+        var surface = new SpringSurface();
+        var size = new Vector2(483, 367);
+        var settings = new WobbleSettings();
+        surface.Reset(new(600, 400), size);
+        for (int frame = 0; frame <= 174; ++frame)
+        {
+            var pos = new Vector2(2600 + MathF.Sin(frame * 0.013f) * 500, 1400 + MathF.Sin(frame * 0.1f) * 300);
+            surface.Advance(pos, size, pos + new Vector2(100, 15), true, 1f / 60, settings);
+        }
+        Require(surface.IsActive, "Replay did not excite the surface");
+        using var source = new OwnedDrawList(); using var output = new OwnedDrawList();
+        // Captured from a native ImGui rounded console bezel replay. Direct bicubic evaluation
+        // reverses this skinny triangle's winding despite a healthy, unfolded spring surface.
+        source.Vertices.Add(Vertex(2986.028f, 1293.6804f));
+        source.Vertices.Add(Vertex(2986, 1283.923f));
+        source.Vertices.Add(Vertex(2986, 1277.7239f));
+        source.Indices.Add(0); source.Indices.Add(1); source.Indices.Add(2);
+        source.Commands.Add(new ImDrawCmd { ClipRect = new(0, 0, 7680, 4320), ElemCount = 3 });
+        source.Complete(default);
+        int vertices = GeometryProcessor.MaximumVertices, work = 120_000;
+        Require(GeometryProcessor.Build(source.Pointer, output, surface, new(0, 0, 7680, 4320), 1,
+            ref vertices, ref work), "Thin console triangle discarded the warped frame");
+        Require(output.Vertices.Count > 0, "Thin console geometry disappeared");
+        foreach (ImDrawCmd command in output.Commands.Span)
+        for (uint i = command.IdxOffset; i < command.IdxOffset + command.ElemCount; i += 3)
+            Require(SpringSurface.Cross(Pos(output, command, i + 1) - Pos(output, command, i),
+                Pos(output, command, i + 2) - Pos(output, command, i)) > 0, "Thin console triangle inverted");
+    }
+
+    private static void SharedWarpCoverage()
+    {
+        SpringSurface surface = MovingSurface();
+        using var quad = new OwnedDrawList(); using var fan = new OwnedDrawList();
+        using var quadOutput = new OwnedDrawList(); using var fanOutput = new OwnedDrawList();
+        Vector2 pos = surface.Position, size = surface.Size;
+        foreach (Vector2 offset in new[] { Vector2.Zero, new Vector2(size.X, 0), size, new Vector2(0, size.Y) })
+        {
+            quad.Vertices.Add(Vertex(pos.X + offset.X, pos.Y + offset.Y));
+            fan.Vertices.Add(Vertex(pos.X + offset.X, pos.Y + offset.Y));
+        }
+        // The same rectangle as a coarse quad and a fan with a very thin left-hand triangle.
+        foreach (ushort index in new ushort[] { 0, 1, 2, 0, 2, 3 }) quad.Indices.Add(index);
+        fan.Vertices.Add(Vertex(pos.X + 0.005f, pos.Y + size.Y * 0.6f));
+        for (ushort i = 0; i < 4; ++i)
+        { fan.Indices.Add(i); fan.Indices.Add((ushort)((i + 1) % 4)); fan.Indices.Add(4); }
+        quad.Commands.Add(new ImDrawCmd { ClipRect = new(-2000, -2000, 3000, 3000), ElemCount = 6 });
+        fan.Commands.Add(new ImDrawCmd { ClipRect = new(-2000, -2000, 3000, 3000), ElemCount = 12 });
+        quad.Complete(default); fan.Complete(default);
+        Require(Build(quad, quadOutput, surface) && Build(fan, fanOutput, surface), "Equivalent meshes rejected");
+        for (int y = -2; y < 26; ++y)
+        for (int x = -2; x < 34; ++x)
+        {
+            Vector2 sample = pos + new Vector2((x + 0.37f) * size.X / 32, (y + 0.61f) * size.Y / 24);
+            int first = Coverage(quadOutput, sample), second = Coverage(fanOutput, sample);
+            Require(first <= 1 && first == second, $"Warped mesh has a seam, overlap or triangulation-dependent coverage at {sample}");
+        }
+
+        static int Coverage(OwnedDrawList mesh, Vector2 sample)
+        {
+            int count = 0;
+            foreach (ImDrawCmd command in mesh.Commands.Span)
+            for (uint i = command.IdxOffset; i < command.IdxOffset + command.ElemCount; i += 3)
+                if (Inside(sample, Pos(mesh, command, i), Pos(mesh, command, i + 1), Pos(mesh, command, i + 2))) ++count;
+            return count;
+        }
     }
 
     private static void Rejection()

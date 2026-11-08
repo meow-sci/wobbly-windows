@@ -229,6 +229,16 @@ Input acceptance should verify normal clicks, wheel/selection, overlapping windo
 
 Proceed with the compatibility probe and a single-window live-geometry prototype. The local code provides a credible path with no replacement renderer or mandatory custom shader. Keep CPU clipping/tessellation and shared mask geometry as explicit gates; those will determine whether the production implementation stays with live geometry or needs a more involved compositor. Preserve ordinary input and accept the short visual targeting offset during release settling.
 
+## Themed window stutter investigation (November 7, 2026)
+
+The reference game's `ConsoleStyle.BeginWindowCore` draws its own rounded bezel, title strip, highlights and footer in the root window draw list. Flight Plan and Resources call it directly; Ground Track uses it through `ImGuiWindow.OnDrawUiConsole`. The body is an ordinary child window. Movement still uses ImGui's native moving-window path, so the theme does not need a separate drag detector.
+
+A headless replay using the installed macOS native ImGui library reproduced intermittent mesh rejection with these drawing primitives. The rectangular subdivision grid was insufficient: independently evaluating the bicubic surface at each source vertex can reverse the winding of a thin triangle, even with an unfolded surface. Rounded fill fans and antialias fringes expose this particularly easily. The per-triangle fold check then rejected the entire replacement frame in `WobbleRuntime.Render`, visibly alternating between deformed and original geometry.
+
+The fix splits each grid cell along a common diagonal and uses one affine mapping per resulting grid triangle, with cached surface offsets at shared grid nodes. Source triangles are clipped against both the command rectangle and the grid triangles before mapping. This makes the deformation independent of the original mesh triangulation and preserves shared edges. Fold checks now validate those actual grid mappings; callback, clipping, work and vertex-budget safeguards remain in place. Grid-node storage is bounded stack memory, and the warmed mesh path still allocates no managed memory.
+
+Regression checks include a captured thin console triangle (fails with the previous processor), raster coverage of the same rectangle with different source triangulations, and the existing local-fold rejection. A 3,000-frame headless native replay also exercises rounded chrome and a child body. These checks do not replace visual acceptance in the running game, including its GPU coverage-mask pass.
+
 ## Source locations
 
 Local links below point to the inspected snapshots. Commit identifiers above provide the reproducibility boundary.

@@ -5,7 +5,7 @@ using WobblyWindows.Core;
 
 namespace WobblyWindows.Rendering;
 
-/// <summary>Preclips in source space, then splits on one shared root-space grid before warping.</summary>
+/// <summary>Preclips in source space, then maps through one shared triangulated root-space grid.</summary>
 internal static unsafe class GeometryProcessor
 {
     public const int MaximumVertices = 240_000;
@@ -17,10 +17,23 @@ internal static unsafe class GeometryProcessor
         output.Reset();
         int cells = Math.Clamp((int)MathF.Ceiling(MathF.Sqrt(12 * surface.MaximumOffset * framebufferScale / 0.5f)), 8, 64);
         Vector2 cell = surface.Size / cells;
+        // Evaluate the smooth surface only at shared grid nodes. Within each grid triangle the
+        // mapping must be affine: bending each source vertex independently can invert a long,
+        // thin bezel/AA triangle even when the underlying surface has no fold at all.
+        int stride = cells + 1;
+        Span<Vector2> offsets = stackalloc Vector2[stride * stride];
+        for (int y = 0; y <= cells; ++y)
+        for (int x = 0; x <= cells; ++x)
+        {
+            Vector2 p = surface.Position + new Vector2(x * cell.X, y * cell.Y);
+            offsets[y * stride + x] = surface.Warp(p) - p;
+            if (!SpringSurface.Finite(offsets[y * stride + x])) return false;
+        }
         Span<ClipVertex> polygon = stackalloc ClipVertex[12];
         Span<ClipVertex> scratch = stackalloc ClipVertex[12];
         Span<ClipVertex> clipped = stackalloc ClipVertex[12];
         Span<ClipVertex> cellScratch = stackalloc ClipVertex[12];
+        Span<ClipVertex> half = stackalloc ClipVertex[12];
         foreach (ImDrawCmd original in source->CmdBuffer.Span)
         {
             if (original.UserCallback != 0 || original.ElemCount % 3 != 0
@@ -61,26 +74,45 @@ internal static unsafe class GeometryProcessor
                         x == cells - 1 ? max.X : surface.Position.X + (x + 1) * cell.X,
                         y == cells - 1 ? max.Y : surface.Position.Y + (y + 1) * cell.Y);
                     int n = Clip(clipped, count, cellScratch, tile);
-                    for (int t = 1; t + 1 < n; ++t)
+                    if (n < 3) continue;
+                    Vector2 origin = surface.Position + new Vector2(x * cell.X, y * cell.Y);
+                    Vector2 d00 = offsets[y * stride + x], d10 = offsets[y * stride + x + 1],
+                        d01 = offsets[(y + 1) * stride + x], d11 = offsets[(y + 1) * stride + x + 1];
+                    // Both halves must preserve orientation. This validates the actual piecewise
+                    // affine map rather than mistaking curved chords of skinny input for folds.
+                    float area = cell.X * cell.Y;
+                    if (SpringSurface.Cross(new Vector2(cell.X, 0) + d10 - d00, cell + d11 - d00) < area * 0.05f
+                        || SpringSurface.Cross(cell + d11 - d00, new Vector2(0, cell.Y) + d01 - d00) < area * 0.05f) return false;
+                    for (int side = 0; side < 2; ++side)
                     {
-                        ClipVertex a = clipped[0], b = clipped[t], c = clipped[t + 1];
-                        float sourceArea = SpringSurface.Cross(b.Position - a.Position, c.Position - a.Position);
-                        if (Math.Abs(sourceArea) < 0.00001f) continue;
-                        Vector2 pa = surface.Warp(a.Position), pb = surface.Warp(b.Position), pc = surface.Warp(c.Position);
-                        float outputArea = SpringSurface.Cross(pb - pa, pc - pa);
-                        // The coarse solver guard is only a heuristic. Validate actual output too.
-                        if (!float.IsFinite(outputArea) || outputArea * Math.Sign(sourceArea) < Math.Abs(sourceArea) * 0.05f) return false;
-                        if (vertexBudget < 3) return false;
-                        if (output.Vertices.Count - command.VtxOffset + 3 > ChunkVertices)
+                        clipped[..n].CopyTo(half);
+                        int halfCount = ClipDiagonal(half, n, cellScratch, origin, cell, side);
+                        for (int t = 1; t + 1 < halfCount; ++t)
                         {
-                            Flush(output, ref command, bounds, viewport);
-                            command.IdxOffset = (uint)output.Indices.Count; command.VtxOffset = (uint)output.Vertices.Count;
-                            bounds = EmptyBounds;
+                            ClipVertex a = half[0], b = half[t], c = half[t + 1];
+                            float sourceArea = SpringSurface.Cross(b.Position - a.Position, c.Position - a.Position);
+                            if (Math.Abs(sourceArea) < 0.00001f) continue;
+                            Vector2 pa = Warp(a.Position), pb = Warp(b.Position), pc = Warp(c.Position);
+                            if (vertexBudget < 3) return false;
+                            if (output.Vertices.Count - command.VtxOffset + 3 > ChunkVertices)
+                            {
+                                Flush(output, ref command, bounds, viewport);
+                                command.IdxOffset = (uint)output.Indices.Count; command.VtxOffset = (uint)output.Vertices.Count;
+                                bounds = EmptyBounds;
+                            }
+                            Emit(a, pa, output, command.VtxOffset, ref bounds);
+                            Emit(b, pb, output, command.VtxOffset, ref bounds);
+                            Emit(c, pc, output, command.VtxOffset, ref bounds);
+                            command.ElemCount += 3; vertexBudget -= 3;
                         }
-                        Emit(a, pa, output, command.VtxOffset, ref bounds);
-                        Emit(b, pb, output, command.VtxOffset, ref bounds);
-                        Emit(c, pc, output, command.VtxOffset, ref bounds);
-                        command.ElemCount += 3; vertexBudget -= 3;
+
+                        Vector2 Warp(Vector2 p)
+                        {
+                            Vector2 uv = (p - origin) / cell;
+                            return p + (side == 0
+                                ? d00 * (1 - uv.X) + d10 * (uv.X - uv.Y) + d11 * uv.Y
+                                : d00 * (1 - uv.Y) + d11 * uv.X + d01 * (uv.Y - uv.X));
+                        }
                     }
                 }
             }
@@ -104,6 +136,30 @@ internal static unsafe class GeometryProcessor
         Math.Clamp((int)MathF.Floor((value - origin) / step), 0, cells - 1);
     private static Vector4 EmptyBounds => new(float.PositiveInfinity, float.PositiveInfinity, float.NegativeInfinity, float.NegativeInfinity);
     private static bool Finite(Vector4 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z) && float.IsFinite(v.W);
+
+    private static int ClipDiagonal(Span<ClipVertex> polygon, int count, Span<ClipVertex> scratch,
+        Vector2 origin, Vector2 cell, int side)
+    {
+        int written = 0;
+        ClipVertex previous = polygon[count - 1];
+        float pd = Distance(previous.Position);
+        for (int i = 0; i < count; ++i)
+        {
+            ClipVertex current = polygon[i];
+            float cd = Distance(current.Position);
+            if ((pd >= 0) != (cd >= 0)) scratch[written++] = ClipVertex.Lerp(previous, current, pd / (pd - cd));
+            if (cd >= 0) scratch[written++] = current;
+            previous = current; pd = cd;
+        }
+        scratch[..written].CopyTo(polygon);
+        return written;
+
+        float Distance(Vector2 p)
+        {
+            Vector2 relative = (p - origin) / cell;
+            return side == 0 ? relative.X - relative.Y : relative.Y - relative.X;
+        }
+    }
 
     private static void Flush(OwnedDrawList output, ref ImDrawCmd command, Vector4 bounds, Vector4 viewport)
     {
