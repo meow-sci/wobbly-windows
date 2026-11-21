@@ -2,10 +2,12 @@
 
 Historical research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10.25.5707**.
 
-Current reviewed target: **2026.11.10.5801**. See the
-[November 8 compatibility review](#ksa-202611105801-compatibility-review-november-8-2026)
-for the upgrade evidence and remaining in-game acceptance. The original research
-and native fingerprints below describe the historical baseline.
+Current reviewed target: **2026.11.16.5901**. See the
+[November 20 compatibility review](#ksa-202611165901-compatibility-review-november-20-2026)
+for the upgrade evidence and remaining in-game acceptance; the
+[November 8 review](#ksa-202611105801-compatibility-review-november-8-2026)
+covers the previous target. The original research and native fingerprints below
+describe the historical baseline.
 
 Compatibility update (November 7, 2026): the implementation now delegates native library resolution and the managed/native ImGui pairing to the host BRUTAL bindings on Windows x64, Linux x86_64, and the unofficial macOS ARM64 port. The Windows hashes below record the original research baseline, not runtime acceptance requirements. Runtime checks cover the mod-created vector headers and renderer vertex-offset capability; assembly identities, native filenames/hashes, and ImGui version strings no longer gate execution. Internal ABI correctness remains a host responsibility, and per-platform in-game acceptance is still required.
 
@@ -304,6 +306,71 @@ timing, GPU coverage-mask parity, drag/settle visuals, text/menu/console input,
 DPI changes or shutdown/context recreation. Run the upgrade skill's full
 in-game acceptance checklist with a matching host/loader/native pair before
 recording platform acceptance.
+
+## KSA 2026.11.16.5901 compatibility review (November 20, 2026)
+
+**Outcome: mechanical fixes. The mod's top-level menu now uses the host menu
+helper, and the compatibility metadata and CI snapshot pin are updated. No
+draw-data, hook-timing or input changes were required by the reviewed source
+contracts.**
+
+The baseline is KSA `2026.11.10.5801`, assemblies revision
+`4de698e8cf248c29fc95f188fb258775d6e574a3`. The runtime reference build,
+previous CI pin, release notes and November 8 review all agreed on that
+baseline; the supplied previous checkout is at the same revision. The target is
+KSA `2026.11.16.5901`, assemblies revision
+`8d2ad13693adc15005e2f110c42fa6575f70fd40` (clean checkout). Its
+`version.json` records `date: 2026-11-17`, `fromRevision: 5801` and
+`toRevision: 5901`, so its changelog is contiguous with the baseline. Both
+source snapshots and the complete target managed DLL directory were reviewed;
+upstream trees were left unchanged.
+
+Only six managed DLLs differ: `KSA`, `Planet.Core`, `Planet.Render.Core`,
+`Brutal.Vulkan`, `Brutal.Vulkan.Abstractions` and `Brutal.Vulkan.Vma`.
+`Brutal.ImGui.dll` and `Brutal.ImGui.Abstractions.dll` are byte-identical, so
+the context, window, hook, IO, draw-list, draw-data, command, vertex and
+`ImVector` bindings are unchanged. The decompiled `ConsoleWindow` and
+`ConsoleWindowLogger` diffs are decompiler reference-resolution artifacts only.
+
+| Upstream contract and mod coupling | Review result |
+| --- | --- |
+| `Program.PrepareImGui(double)`, `Program.DrawProgramMenusHook()`, `ImGuiBackend.Shutdown()`, `GameSettings.OnKeyAll(GlfwKeyEvent)` / the four `Mod` patches | Method bodies are textually unchanged; `OnKeyAll` remains the only overload and is still dispatched first. Program key dispatch adds `PartPicking.OnKey` after the console checks and before `WantCaptureKeyboard`, which leaves the text-input guard and console exception correct. `OnFrame` and `PostRender` are unchanged; `PrepareImGui` still precedes `ImGui.Render`. |
+| Menu bar / `WobbleRuntime.DrawMenu` | Rev 5808 routes every host menu through the new `ImGuiHelper.BeginMenu`. It pins the popup to the menu bar window's viewport and caps its height at the viewport work area, which fixes offset menu highlighting on some Linux desktops and keeps long menus scrolling inside the window. The mod's **Wobbly Windows** menu sits in the same bar and still called `ImGui.BeginMenu`, so it now calls the helper. The hook still runs inside `BeginMenuBar`/`EndMenuBar`; `HoveredViewport` and `SetMenuBarInUse` are unchanged. Menu popups remain excluded from wobble. |
+| `ImGuiBackendVulkanImpl`, `Program.RenderGame` / `RenderEditor` / replacement geometry | Rev 5816 replaces the remaining render passes and framebuffers with dynamic rendering. ImGui pipelines now get the swapchain color format through `VkPipelineRenderingCreateInfo`; `RenderState` exchanges `RenderPass` for `ColorFormat`/`DepthFormat`; and the UI pass uses `BeginRendering` with explicit image transitions. `RenderDrawData`'s upload, command replay, 16-bit indices, list/command offsets, texture binding, callback dispatch and framebuffer-scale scissoring are unchanged. Mask generation still precedes the visible UI draw. The mod never touches Vulkan objects, so no change is needed. |
+| `UiCoverageMaskSystem` / mask parity | Source file unchanged. The final draw-data consumers are still `UiCoverageMaskSystem` and `ImGuiBackendVulkanImpl`, plus the existing loading/select/confirm-mods screens. No new `GetDrawData`, `ImGui.Render`, context creation or context-hook caller was added. `HdrOutput.SCENE_FORMAT` now uses `B10G11R11UfloatPack32`; `UI_FORMAT` is unchanged, which leaves UI geometry unaffected. |
+| `GaugeCanvas`, `ImGauge`, `ConsoleStyle`, new windows / eligibility and family ownership | Gauge callbacks now pass color/depth formats to `RenderInImGuiPass`, and hosted text scales with resolution. They still submit custom callbacks and remain excluded families. `GaugeCanvas` is still the only `AddOccluder` caller, and no new `AddCallback` user exists. The new Crew Clock, Life Support (including Transfer Supplies), Life Support alert, EVA supplies and kFS windows are ordinary ImGui windows with no custom callbacks. Fixed overlays use `NoMove`, and the debug-only kFS window is not pinned to the main viewport. The generic flag, callback and foreign-viewport rules cover them. `ConsoleStyle` only drops unused gauge spacing helpers and makes `DrawWarningTriangle` public. |
+| StarMap, references and distribution / `Mod`, project and manifest | KSA's mod loader sources are unchanged. Retained compile-only `StarMap.API` 0.3.6 and `Lib.Harmony` 2.4.2 with the locked restore and the existing host assembly set; no assembly moved or split. The single entry assembly and five-file package are unchanged. |
+
+Updated `Compatibility.ReferenceGameBuild`, the missing-DLL diagnostic, the CI
+snapshot pin/comment and `docs/releases.md` together. The upgrade skill's
+catalog records the new `ImGuiHelper.BeginMenu` coupling and the
+dynamic-rendering backend. No native hashes, version whitelist, package
+upgrades, motion tuning or input mapping changes were introduced.
+
+Validation host: macOS ARM64, .NET SDK `10.0.404`, runtime `10.0.15`, Python
+`3.12.8`. Build and game-free checks explicitly selected the target snapshot's
+`current/dll` directory through `-p:KSAFolder=...` and used
+`-p:RestoreLockedMode=true`.
+
+- Release solution build with `--no-incremental`: passed, zero warnings/errors.
+- Debug `RunChecks=true` executable: all 13 groups passed. These use managed
+  bindings without launching native ImGui.
+- `tools/validate-dist.py`: passed, exact five-file inventory, matching versions
+  and host dependency exclusions.
+- `tools/check-release-archive.py`: passed, ZIP matches stage and SHA-256.
+- `tools/check-release-policy.py`: passed (14 tests) using Python 3.12.8.
+
+**In-game acceptance is pending on Windows x64, Linux x86_64 and the unofficial
+macOS ARM64 port.** The supplied target contains managed DLLs and decompiled
+source, without a runnable game/StarMap launcher or matching native ImGui
+library. No game was launched, so this audit does not prove Harmony patch
+application, installed loader compatibility, native internal ABI, live callback
+timing, GPU coverage-mask parity under dynamic rendering, drag/settle visuals,
+menu placement, text/menu/console input, DPI changes or shutdown/context
+recreation. Run the upgrade skill's full in-game acceptance checklist with a
+matching host/loader/native pair before recording platform acceptance. For this
+build, also open the Wobbly Windows menu on a secondary viewport and in Linux
+windowed mode.
 
 ## Historical source locations
 

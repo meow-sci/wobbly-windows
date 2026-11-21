@@ -100,7 +100,7 @@ disable wobble entirely.
 | Target and patch | Contract to verify in the new game |
 | --- | --- |
 | `Program.PrepareImGui(double)` prefix → `PrepareFrame` | String-named target with an explicit argument type. It must run with the main ImGui context current, early enough to register hooks before that frame's `NewFrame`/`Render`. Trace context selection and all callers; attaching to an offscreen context is wrong. |
-| `Program.DrawProgramMenusHook()` postfix → `Menu` | Must execute inside the active menu bar and ImGui frame. `DrawMenu` uses `Program.HoveredViewport` and `IGameViewportLifecycle.SetMenuBarInUse(true)`; check hovered-viewport and menu-capture semantics. |
+| `Program.DrawProgramMenusHook()` postfix → `Menu` | Must execute inside the active menu bar and ImGui frame. `DrawMenu` opens its menu with KSA's `ImGuiHelper.BeginMenu` (as every host menu does: it pins the popup to the bar's viewport and bounds its height), then uses `Program.HoveredViewport` and `IGameViewportLifecycle.SetMenuBarInUse(true)`. Check that helper's signature/behavior and whether host menus still use it, plus hovered-viewport and menu-capture semantics. |
 | `ImGuiBackend.Shutdown()` prefix → `BeforeBackendShutdown` | Restore borrowed draw data and detach hooks before native context/backend destruction. Check shutdown callers, ordering, and context replacement/reinitialization. |
 | `GameSettings.OnKeyAll` prefix → `GuardTextInput` | Resolved by name without argument-type filtering; check overload ambiguity and the boolean return contract for `ref bool __result`. Returning `true` as the result and skipping the original must still consume keys. Trace `Program` key dispatch, `Program.ConsoleWindow?.IsOpen`, and `ImGui.GetIO().WantTextInput` so UI text editing consumes hotkeys while the normal console path remains available. |
 
@@ -173,6 +173,11 @@ internal window/context structures.
 
 Inspect `ImGuiBackendVulkanImpl` upload/draw paths and
 `UiCoverageMaskSystem.RecordMaskGeneration` plus its draw-command replay.
+Since 2026.11.16.5901 the host uses Vulkan dynamic rendering (`BeginRendering`,
+pipeline color formats, `RenderState.ColorFormat`/`DepthFormat`) rather than
+render passes. Vulkan plumbing churn is normally irrelevant here; review only
+whether it moves mask generation relative to the UI draw or changes what
+`RenderDrawData` reads.
 Both must accept the synthetic lists and use matching positions, offsets,
 textures, alpha, clipping, and framebuffer scale. Check texture trust/opacity
 rules, callback handling, explicit opaque rectangles, and changes to caching

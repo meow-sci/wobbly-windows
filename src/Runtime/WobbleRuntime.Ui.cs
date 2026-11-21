@@ -12,7 +12,9 @@ internal unsafe sealed partial class WobbleRuntime
 
     public void DrawMenu()
     {
-        if (_disposed || !ImGui.BeginMenu("Wobbly Windows"u8)) return;
+        // Match the host menu bar: KSA's helper keeps the popup on the bar's viewport and
+        // within its work area (fixes offset menu highlighting on some Linux desktops).
+        if (_disposed || !ImGuiHelper.BeginMenu("Wobbly Windows"u8)) return;
         try
         {
             if (Program.HoveredViewport is IGameViewportLifecycle viewport) viewport.SetMenuBarInUse(true);

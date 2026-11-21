@@ -15,19 +15,20 @@ stay in sync independently; CI stamps them without committing those changes.
 
 The repository requires `KSA_GAME_ASSEMBLIES_PAT`, a fine-grained token with
 read-only Contents access to `meow-sci/ksa-game-assemblies`. The workflow pins
-`4de698e8cf248c29fc95f188fb258775d6e574a3`
-(KSA 2026.11.10.5801), matching the mod's audited compatibility target. Update
+`8d2ad13693adc15005e2f110c42fa6575f70fd40`
+(KSA 2026.11.16.5901), matching the mod's audited compatibility target. Update
 that pin only with a compatibility review. Full builds run for branch pushes,
 manual dispatches and same-repository PRs. Fork PRs run offline release-policy
 checks only. Build jobs have read-only repository permissions; publishing and
 cleanup have Contents write permission.
 
-The November 8, 2026 compatibility review compared this snapshot with
-`4b3e9e2281c6eec25c9ab77ddf2961ec53ec3dc8` (KSA 2026.10.25.5707).
-No runtime behavior changes were needed. Release compilation and all 13
-game-free check groups passed against the target DLLs on macOS ARM64;
+The November 20, 2026 compatibility review compared this snapshot with
+`4de698e8cf248c29fc95f188fb258775d6e574a3` (KSA 2026.11.10.5801).
+The only runtime change is that the mod's menu now uses KSA's
+`ImGuiHelper.BeginMenu`, matching the host menu bar. Release compilation and
+all 13 game-free check groups passed against the target DLLs on macOS ARM64;
 in-game acceptance remains pending on all supported platforms. See
-[the compatibility review](implementation-research.md#ksa-202611105801-compatibility-review-november-8-2026)
+[the compatibility review](implementation-research.md#ksa-202611165901-compatibility-review-november-20-2026)
 for the source audit and validation limits. The pin records the reviewed
 snapshot, not in-game certification.
 
