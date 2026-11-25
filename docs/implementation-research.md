@@ -2,11 +2,12 @@
 
 Historical research baseline: November 4, 2026. Target: Kitten Space Agency build **2026.10.25.5707**.
 
-Current reviewed target: **2026.11.16.5901**. See the
-[November 20 compatibility review](#ksa-202611165901-compatibility-review-november-20-2026)
+Current reviewed target: **2026.11.25.5949**. See the
+[November 25 compatibility review](#ksa-202611255949-compatibility-review-november-25-2026)
 for the upgrade evidence and remaining in-game acceptance; the
-[November 8 review](#ksa-202611105801-compatibility-review-november-8-2026)
-covers the previous target. The original research and native fingerprints below
+[November 20 review](#ksa-202611165901-compatibility-review-november-20-2026)
+and [November 8 review](#ksa-202611105801-compatibility-review-november-8-2026)
+cover earlier targets. The original research and native fingerprints below
 describe the historical baseline.
 
 Compatibility update (November 7, 2026): the implementation now delegates native library resolution and the managed/native ImGui pairing to the host BRUTAL bindings on Windows x64, Linux x86_64, and the unofficial macOS ARM64 port. The Windows hashes below record the original research baseline, not runtime acceptance requirements. Runtime checks cover the mod-created vector headers and renderer vertex-offset capability; assembly identities, native filenames/hashes, and ImGui version strings no longer gate execution. Internal ABI correctness remains a host responsibility, and per-platform in-game acceptance is still required.
@@ -371,6 +372,76 @@ recreation. Run the upgrade skill's full in-game acceptance checklist with a
 matching host/loader/native pair before recording platform acceptance. For this
 build, also open the Wobbly Windows menu on a secondary viewport and in Linux
 windowed mode.
+
+## KSA 2026.11.25.5949 compatibility review (November 25, 2026)
+
+**Outcome: no code changes. Only the compatibility metadata and the CI snapshot
+pin are updated. The reviewed source contracts required no draw-data,
+hook-timing, menu or input changes.**
+
+The baseline is KSA `2026.11.16.5901`, assemblies revision
+`8d2ad13693adc15005e2f110c42fa6575f70fd40`. The runtime reference build,
+previous CI pin, release notes and November 20 review all agreed on that
+baseline; the supplied previous checkout is at the same revision. The target is
+KSA `2026.11.25.5949`, assemblies revision
+`618c2a1370df423099e297b20382aa419a4b04d3` (clean checkout, present on
+`origin/main`). Its `version.json` records `date: 2026-11-25`,
+`fromRevision: 5901` and `toRevision: 5949`, so its changelog is contiguous with
+the baseline. Both source snapshots and the complete target managed DLL
+directory were reviewed; upstream trees were left unchanged.
+
+Only seven managed DLLs differ: `KSA`, `Planet.Core`, `Planet.Render.Core`,
+`Brutal.Vulkan`, `Brutal.Vulkan.Abstractions`, `BepuPhysics` and
+`BepuUtilities`. `Brutal.ImGui.dll`, `Brutal.ImGui.Abstractions.dll`,
+`Brutal.Core`, `Brutal.Memory`, `Brutal.Numerics`, `Brutal.Strings`,
+`Brutal.Glfw` and `Brutal.Render.Common` are byte-identical, so the context,
+window, hook, IO, draw-list, draw-data, command, vertex and `ImVector` bindings
+are unchanged. The decompiled `ConsoleWindow`/`ConsoleWindowLogger` diffs are
+again decompiler reference-resolution artifacts only (typed `LogLevel` cases).
+
+| Upstream contract and mod coupling | Review result |
+| --- | --- |
+| `Program.PrepareImGui(double)`, `Program.DrawProgramMenusHook()`, `ImGuiBackend.Shutdown()`, `GameSettings.OnKeyAll(GlfwKeyEvent)` / the four `Mod` patches | Method bodies are textually identical apart from log line-number literals; `ImGuiBackend.cs` is unchanged and `OnKeyAll` is still the only overload. `RenderGame` and `PostRender` are identical. `OnFrame` only adds `SaveSystemRestart.OnFrame()`/`SaveSystemSwap.OnFrame()` and a profiler marker around `StreamingUploader.Poll`. Program key dispatch is unchanged. |
+| Menu bar / `WobbleRuntime.DrawMenu` | `ImGuiHelper`, `IGameViewportLifecycle` and the menu-hook call site are unchanged. The only new host menu entry is Debug → Show Destinations, which uses the same `ImGuiHelper.DrawMenuItem` path. |
+| Mid-session star-system swap (revs 5916, 5938) / frame lifetime | New `Program.SwapSystem` runs from `OnFrame`, waits for device idle, then disposes and rebuilds only world renderers (planet, transparencies, plume trails, exhausts, ocean, sun bloom). It does not touch the ImGui context, `ImGuiBackend`, or `UiCoverageMaskSystem`, so hooks and borrowed draw data are unaffected. The VRAM fallback `SaveSystemRestart.RestartInto` is `Process.Start` plus `Environment.Exit(0)`, which needs no mod teardown. A long swap frame produces a large UI `DeltaTime`; `SpringSurface` clamps its accumulator to eight 1/120 s steps and resets on large jumps, so motion stays bounded. |
+| `ImGuiBackendVulkanImpl`, `Program.RenderGame` / replacement geometry | Changes are Vulkan debug names only (rev 5904's abstractions update). `RenderDrawData` is identical, so upload, command replay, 16-bit indices, offsets, texture binding, callbacks and framebuffer-scale scissoring are unchanged. The mod never touches Vulkan objects. |
+| `UiCoverageMaskSystem` / mask parity | `RecordMaskGeneration` and draw-command replay are identical. The depth-stamp pipeline now uses `DepthCompareOp.Greater` (was `Always`) and two blend attachments, matching the split normal/roughness opaque pre-pass target (revs 5923/5937). The stamp is a fullscreen triangle that samples the already-generated mask, so the mod's replacement lists still feed mask generation exactly as before. Rev 5948's alpha-less main color target is a world-compositing change, not a UI consumer change. |
+| Draw-data consumers and contexts | Call-site counts and file sets are unchanged for `PrepareImGui`, `ImGui.Render`, `ImGui.NewFrame`, `GetDrawData`, `AddCallback`/`UserCallback`, `CreateContext`/`SetCurrentContext`/`DestroyContext`, `UiCoverageMask.*`, `ImGuiHelper.BeginMenu`, `BeginWindowCore` and opaque-rect registration. |
+| `GaugeCanvas`, `ConsoleStyle`, `ConsoleWidgets`, `ResourcesPanel`, new windows / eligibility | `GaugeCanvas` and `ConsoleStyle` are unchanged. Rev 5927's Segmented widget now gives its trailing `Dummy` the full track width and restores the cursor Y, which only changes layout. Rev 5924's Resources panel jitter fix adds hysteresis to the label font size, which changes no primitive types, callbacks or coverage registration. The new debug-only Destinations window is an ordinary `ImGui.Begin` window with tables and tabs and no custom callbacks. `ConfigOnStartPopup` adds a cascade-count slider; `LifeSupportWindow` changes mission timing logic only. |
+| StarMap, references and distribution / `Mod`, project and manifest | KSA's mod loader sources are unchanged. Retained compile-only `StarMap.API` 0.3.6 and `Lib.Harmony` 2.4.2 with the locked restore and the existing host assembly set; no assembly moved or split. The single entry assembly and five-file package are unchanged. |
+
+Updated `Compatibility.ReferenceGameBuild`, the missing-DLL diagnostic, the CI
+snapshot pin/comment and `docs/releases.md` together. The upgrade skill's
+catalog needed no changes because the coupling surface is unchanged. No native
+hashes, version whitelist, package upgrades, motion tuning or input mapping
+changes were introduced.
+
+Validation host: macOS ARM64, .NET SDK `10.0.404`, runtime `10.0.15`, Python
+`3.15.2` for the `tomllib`-based tools (system Python 3.9 lacks `tomllib`).
+Build and game-free checks used the repository's default `KSAFolder`
+resolution to the adjacent `../ksa-game-assemblies/current/dll`, confirmed
+through the compiler reference paths and the `KSA.dll` hash copied into the
+checks output. They also used `-p:RestoreLockedMode=true`.
+
+- Release solution build with `--no-incremental`: passed, zero warnings/errors.
+- Debug `RunChecks=true` executable: all 13 groups passed. These use managed
+  bindings without launching native ImGui.
+- `tools/validate-dist.py`: passed, exact five-file inventory, matching versions
+  and host dependency exclusions.
+- `tools/check-release-archive.py`: passed, ZIP matches stage and SHA-256.
+- `tools/check-release-policy.py`: passed (14 tests).
+
+**In-game acceptance is pending on Windows x64, Linux x86_64 and the unofficial
+macOS ARM64 port.** The supplied target contains managed DLLs and decompiled
+source, without a runnable game/StarMap launcher or matching native ImGui
+library. No game was launched, so this audit does not prove Harmony patch
+application, installed loader compatibility, native internal ABI, live callback
+timing, GPU coverage-mask parity, drag/settle visuals, text/menu/console input,
+DPI changes or shutdown/context recreation. Run the upgrade skill's full
+in-game acceptance checklist with a matching host/loader/native pair before
+recording platform acceptance. For this build, also drag the Resources panel
+and a window containing a Segmented widget, and switch star systems by loading
+a save from another system while a window is wobbling or at rest.
 
 ## Historical source locations
 

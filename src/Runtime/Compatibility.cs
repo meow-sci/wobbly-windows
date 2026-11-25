@@ -6,7 +6,7 @@ namespace WobblyWindows.Runtime;
 
 internal static class Compatibility
 {
-    public const string ReferenceGameBuild = "2026.11.16.5901";
+    public const string ReferenceGameBuild = "2026.11.25.5949";
 
     public static void Validate()
     {
